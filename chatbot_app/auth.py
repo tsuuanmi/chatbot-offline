@@ -26,6 +26,7 @@ _DIGEST_PATTERN = re.compile(
 _MIN_API_KEY_LENGTH = 32
 _MAX_API_KEY_LENGTH = 512
 _MAX_IDENTITIES = 1000
+_MAX_REGISTRY_BYTES = 256 * 1024
 
 
 class AuthConfigError(RuntimeError):
@@ -72,10 +73,29 @@ class AuthRegistry:
             )
 
         try:
+            size = path.stat().st_size
+        except OSError as error:
+            raise AuthConfigError(
+                "Unable to stat authentication registry"
+            ) from error
+
+        if size > _MAX_REGISTRY_BYTES:
+            raise AuthConfigError(
+                "Authentication registry exceeds size limit"
+            )
+
+        try:
+            content = path.read_text(
+                encoding="utf-8"
+            )
+        except (OSError, UnicodeError) as error:
+            raise AuthConfigError(
+                "Unable to read authentication registry"
+            ) from error
+
+        try:
             raw = json.loads(
-                path.read_text(
-                    encoding="utf-8"
-                )
+                content
             )
         except json.JSONDecodeError as error:
             raise AuthConfigError(
@@ -121,16 +141,34 @@ class AuthRegistry:
                     f"Identity {index} must be an object"
                 )
 
-            owner_id = str(
-                item.get("owner_id") or ""
-            ).strip()
+            raw_owner_id = item.get(
+                "owner_id"
+            )
 
-            digest_hex = str(
-                item.get(
-                    "api_key_sha256"
+            raw_digest = item.get(
+                "api_key_sha256"
+            )
+
+            if not isinstance(
+                raw_owner_id,
+                str,
+            ):
+                raise AuthConfigError(
+                    f"owner_id at identity {index} must be a string"
                 )
-                or ""
-            ).strip().lower()
+
+            if not isinstance(
+                raw_digest,
+                str,
+            ):
+                raise AuthConfigError(
+                    f"api_key_sha256 at identity {index} must be a string"
+                )
+
+            owner_id = raw_owner_id.strip()
+            digest_hex = (
+                raw_digest.strip().lower()
+            )
 
             if not _OWNER_PATTERN.fullmatch(
                 owner_id

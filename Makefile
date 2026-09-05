@@ -342,3 +342,25 @@ smoke-auth: check-auth
 
 smoke-ownership: check-auth
 	@python3 tools/smoke_ownership.py
+
+
+.PHONY: auth-rotate
+
+auth-rotate: check-env
+	@test -n "$(OWNER)" || { echo "OWNER is required" >&2; exit 1; }
+	@test -n "$(KEY_FILE)" || { echo "KEY_FILE is required" >&2; exit 1; }
+	@set -eu; \
+	echo "Stopping chatbot for credential rotation..."; \
+	$(COMPOSE) stop chatbot; \
+	restore_chatbot() { \
+		echo "Restoring chatbot service..."; \
+		$(COMPOSE) up -d chatbot --pull never --wait >/dev/null || true; \
+	}; \
+	trap restore_chatbot EXIT HUP INT TERM; \
+	CHAT_AUTH_REGISTRY_PATH="$(AUTH_REGISTRY)" \
+		python3 -m tools.rotate_auth_key \
+		--owner "$(OWNER)" \
+		--key-file "$(KEY_FILE)"; \
+	$(COMPOSE) up -d chatbot --pull never --wait; \
+	trap - EXIT HUP INT TERM; \
+	echo "AUTH ROTATION COMPLETE"

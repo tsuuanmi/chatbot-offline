@@ -6,8 +6,20 @@ import hashlib
 import json
 import os
 import secrets
+import stat
 import sys
 from pathlib import Path
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(
+        0,
+        str(PROJECT_ROOT),
+    )
+
+from chatbot_app.auth import AuthRegistry
 
 
 DEFAULT_OWNER_ID = "local-development"
@@ -61,64 +73,67 @@ def _write_exclusive(
         raise
 
 
+def _require_private_file(
+    path: Path,
+    *,
+    label: str,
+) -> None:
+    if not path.is_file():
+        raise RuntimeError(
+            f"Missing {label}: {path}"
+        )
+
+    if path.is_symlink():
+        raise RuntimeError(
+            f"{label} must not be a symbolic link"
+        )
+
+    mode = stat.S_IMODE(
+        path.stat().st_mode
+    )
+
+    if mode & 0o077:
+        raise RuntimeError(
+            f"{label} permissions are too broad: "
+            f"{mode:04o}; expected 0600 or stricter"
+        )
+
+
 def check() -> None:
-    if not REGISTRY_PATH.is_file():
-        raise RuntimeError(
-            f"Missing auth registry: {REGISTRY_PATH}"
-        )
+    _require_private_file(
+        REGISTRY_PATH,
+        label="auth registry",
+    )
 
-    if not CLIENT_KEY_PATH.is_file():
-        raise RuntimeError(
-            f"Missing client API key: {CLIENT_KEY_PATH}"
-        )
+    _require_private_file(
+        CLIENT_KEY_PATH,
+        label="client API key",
+    )
 
-    registry = json.loads(
-        REGISTRY_PATH.read_text(
-            encoding="utf-8"
-        )
+    registry = AuthRegistry.from_file(
+        REGISTRY_PATH
     )
 
     api_key = CLIENT_KEY_PATH.read_text(
         encoding="utf-8"
     ).strip()
 
-    digest = hashlib.sha256(
-        api_key.encode("utf-8")
-    ).hexdigest()
-
-    identities = registry.get(
-        "identities",
-        []
-    )
-
-    matches = [
-        item
-        for item in identities
-        if (
-            isinstance(item, dict)
-            and item.get(
-                "api_key_sha256"
-            )
-            == digest
-        )
-    ]
-
-    if len(matches) != 1:
+    if not api_key:
         raise RuntimeError(
-            "Client API key does not match exactly one registry identity"
+            "Client API key is empty"
         )
 
-    owner_id = matches[0].get(
-        "owner_id"
+    identity = registry.authenticate(
+        api_key
     )
 
-    if not owner_id:
+    if identity is None:
         raise RuntimeError(
-            "Matched auth identity has no owner_id"
+            "Client API key does not match authentication registry"
         )
 
     print(
-        f"AUTH CONFIG PASS owner_id={owner_id}"
+        f"AUTH CONFIG PASS owner_id={identity.owner_id}"
     )
 
 
@@ -127,6 +142,10 @@ def bootstrap() -> None:
         parents=True,
         exist_ok=True,
         mode=0o700,
+    )
+
+    REGISTRY_PATH.parent.chmod(
+        0o700
     )
 
     registry_exists = (

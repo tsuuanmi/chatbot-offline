@@ -138,6 +138,128 @@ class AuthRegistryTests(
                 )
 
 
+    def test_missing_registry_is_rejected(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "missing-auth.json"
+
+            with self.assertRaises(
+                AuthConfigError
+            ):
+                AuthRegistry.from_file(
+                    path
+                )
+
+
+    def test_duplicate_digest_is_rejected(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "auth.json"
+
+            path.write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "identities": [
+                            {
+                                "owner_id": "owner-a",
+                                "api_key_sha256": "1" * 64,
+                            },
+                            {
+                                "owner_id": "owner-b",
+                                "api_key_sha256": "1" * 64,
+                            },
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaises(
+                AuthConfigError
+            ):
+                AuthRegistry.from_file(
+                    path
+                )
+
+    def test_non_string_owner_is_rejected(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "auth.json"
+
+            path.write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "identities": [
+                            {
+                                "owner_id": 123,
+                                "api_key_sha256": "1" * 64,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaises(
+                AuthConfigError
+            ):
+                AuthRegistry.from_file(
+                    path
+                )
+
+    def test_non_string_digest_is_rejected(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "auth.json"
+
+            path.write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "identities": [
+                            {
+                                "owner_id": "owner-a",
+                                "api_key_sha256": 123,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaises(
+                AuthConfigError
+            ):
+                AuthRegistry.from_file(
+                    path
+                )
+
+    def test_oversized_registry_is_rejected(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "auth.json"
+
+            path.write_text(
+                " " * (256 * 1024 + 1),
+                encoding="utf-8",
+            )
+
+            with self.assertRaises(
+                AuthConfigError
+            ):
+                AuthRegistry.from_file(
+                    path
+                )
+
+
+
 class IdentityContextTests(
     unittest.TestCase
 ):
