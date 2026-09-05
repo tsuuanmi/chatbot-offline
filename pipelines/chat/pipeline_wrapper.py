@@ -1,6 +1,7 @@
 """Minimal CPU-first chat pipeline backed by llama.cpp."""
 
 import os
+from pathlib import Path
 
 from haystack import Pipeline
 from haystack.components.generators.chat import OpenAIChatGenerator
@@ -22,8 +23,14 @@ class PipelineWrapper(BasePipelineWrapper):
     skip_mcp = True
 
     def setup(self) -> None:
+        api_key_path = Path(os.environ["LLAMA_API_KEY_FILE"])
+        api_key = api_key_path.read_text(encoding="utf-8").strip()
+
+        if not api_key:
+            raise RuntimeError("llama.cpp API key file is empty")
+
         generator = OpenAIChatGenerator(
-            api_key=Secret.from_env_var("LLAMA_API_KEY"),
+            api_key=Secret.from_token(api_key),
             api_base_url=os.environ["LLAMA_BASE_URL"],
             model=os.environ["LLAMA_MODEL_ALIAS"],
             generation_kwargs={
@@ -53,8 +60,6 @@ class PipelineWrapper(BasePipelineWrapper):
             }
         )
 
-        reply = result["llm"]["replies"][0]
-
         return {
-            "response": reply.text,
+            "response": result["llm"]["replies"][0].text,
         }

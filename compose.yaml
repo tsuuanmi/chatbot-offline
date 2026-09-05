@@ -1,6 +1,78 @@
 name: chatbot-offline
 
 services:
+  postgres:
+    image: ${POSTGRES_IMAGE}
+    pull_policy: never
+
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./runtime/secrets/postgres_password:/run/secrets/postgres_password:ro,z
+
+    expose:
+      - "5432"
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+    restart: unless-stopped
+
+    security_opt:
+      - no-new-privileges:true
+
+
+  db-migrate:
+    profiles:
+      - tools
+
+    image: ${POSTGRES_IMAGE}
+    pull_policy: never
+
+    entrypoint:
+      - /bin/sh
+      - /database/migrate.sh
+
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: ${POSTGRES_USER}
+      PGDATABASE: ${POSTGRES_DB}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+
+    volumes:
+      - ./database:/database:ro,z
+      - ./runtime/secrets/postgres_password:/run/secrets/postgres_password:ro,z
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    restart: "no"
+
+    read_only: true
+
+    tmpfs:
+      - /tmp
+
+    cap_drop:
+      - ALL
+
+    security_opt:
+      - no-new-privileges:true
+
+
   llama-server:
     image: ${LLAMA_CPU_IMAGE}
     pull_policy: never
@@ -27,11 +99,13 @@ services:
       - --jinja
       - --reasoning
       - "off"
-      - --api-key
-      - ${LLAMA_API_KEY}
+
+    environment:
+      LLAMA_ARG_API_KEY_FILE: /run/secrets/llama_api_key
 
     volumes:
       - ${MODEL_DIR}:/models:ro,z
+      - ./runtime/secrets/llama_api_key:/run/secrets/llama_api_key:ro,z
 
     expose:
       - "8080"
@@ -67,11 +141,12 @@ services:
       LOG: INFO
 
       LLAMA_BASE_URL: http://llama-server:8080/v1
-      LLAMA_API_KEY: ${LLAMA_API_KEY}
+      LLAMA_API_KEY_FILE: /run/secrets/llama_api_key
       LLAMA_MODEL_ALIAS: ${LLAMA_MODEL_ALIAS}
 
     volumes:
       - ./pipelines:/app/pipelines:ro,z
+      - ./runtime/secrets/llama_api_key:/run/secrets/llama_api_key:ro,z
 
     ports:
       - "127.0.0.1:1416:1416"
@@ -97,3 +172,7 @@ services:
 
     security_opt:
       - no-new-privileges:true
+
+
+volumes:
+  postgres_data:
