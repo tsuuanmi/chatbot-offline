@@ -6,6 +6,7 @@ import asyncio
 import os
 from functools import lru_cache
 from pathlib import Path
+from uuid import UUID
 
 from haystack import Pipeline
 from haystack.components.generators.chat import (
@@ -25,6 +26,9 @@ from chatbot_app.domain import (
 from chatbot_app.evidence import (
     EvidenceItem,
     get_evidence_policy,
+)
+from chatbot_app.history import (
+    get_conversation_repository,
 )
 from chatbot_app.policy import (
     DomainDecision,
@@ -106,6 +110,25 @@ class ForensicChatService:
             get_evidence_policy()
         )
 
+        self.history = get_conversation_repository()
+
+        self.owner_id = os.environ.get(
+            "CHAT_OWNER_ID",
+            "local-development",
+        ).strip()
+
+        if not self.owner_id:
+            raise RuntimeError(
+                "CHAT_OWNER_ID must not be empty"
+            )
+
+        self._conversation_locks: dict[
+            str,
+            asyncio.Lock,
+        ] = {}
+
+        self._conversation_locks_guard = asyncio.Lock()
+
         api_key_path = Path(
             os.environ["LLAMA_API_KEY_FILE"]
         )
@@ -147,6 +170,7 @@ class ForensicChatService:
     async def answer(
         self,
         message: str,
+        conversation_id: str | None = None,
     ) -> dict[str, object]:
         query = message.strip()
 
@@ -155,6 +179,73 @@ class ForensicChatService:
                 "message must not be empty"
             )
 
+        # No conversation ID means the existing stateless M5C API.
+        if conversation_id is None:
+            return await self._answer_core(
+                query
+            )
+
+        parsed_id = self._parse_conversation_id(
+            conversation_id
+        )
+
+        lock = await self._conversation_lock(
+            parsed_id
+        )
+
+        async with lock:
+            await self.history.ensure_conversation(
+                parsed_id,
+                owner_id=self.owner_id,
+            )
+
+            response = await self._answer_core(
+                query
+            )
+
+            decision = response.get(
+                "decision"
+            )
+
+            if not isinstance(
+                decision,
+                dict,
+            ):
+                raise RuntimeError(
+                    "Chat response has no decision metadata"
+                )
+
+            saved = await self.history.append_turn(
+                parsed_id,
+                owner_id=self.owner_id,
+                query=query,
+                answer=str(
+                    response["answer"]
+                ),
+                domain=str(
+                    decision["domain"]
+                ),
+                risk=str(
+                    decision["risk"]
+                ),
+                source=str(
+                    response["source"]
+                ),
+            )
+
+        persisted = dict(response)
+
+        persisted["conversation_id"] = str(
+            parsed_id
+        )
+        persisted["turn"] = saved.turn
+
+        return persisted
+
+    async def _answer_core(
+        self,
+        query: str,
+    ) -> dict[str, object]:
         scores = await asyncio.to_thread(
             self.classifier.classify,
             query,
@@ -213,6 +304,43 @@ class ForensicChatService:
             evidence,
             high_risk=False,
         )
+
+    @staticmethod
+    def _parse_conversation_id(
+        value: str,
+    ) -> UUID:
+        value = value.strip()
+
+        if not value:
+            raise ValueError(
+                "conversation_id must not be empty"
+            )
+
+        try:
+            return UUID(value)
+        except ValueError as error:
+            raise ValueError(
+                "conversation_id must be a valid UUID"
+            ) from error
+
+    async def _conversation_lock(
+        self,
+        conversation_id: UUID,
+    ) -> asyncio.Lock:
+        key = str(conversation_id)
+
+        async with self._conversation_locks_guard:
+            lock = self._conversation_locks.get(
+                key
+            )
+
+            if lock is None:
+                lock = asyncio.Lock()
+                self._conversation_locks[
+                    key
+                ] = lock
+
+            return lock
 
     async def _answer_high_risk(
         self,

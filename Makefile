@@ -7,9 +7,16 @@ VERSIONS_ENV ?= versions.env
 RUNTIME_ENV ?= .env
 APP_TAG ?= chatbot-offline/app:local
 
-COMPOSE = docker compose \
-	--env-file $(VERSIONS_ENV) \
-	--env-file $(RUNTIME_ENV)
+COMPOSE = env \
+	-u CHATBOT_IMAGE \
+	-u HAYHOOKS_IMAGE \
+	-u LLAMA_CPU_IMAGE \
+	-u POSTGRES_IMAGE \
+	-u EMBEDDING_MODEL \
+	-u EMBEDDING_DIMENSION \
+	docker compose \
+	--env-file $(RUNTIME_ENV) \
+	--env-file $(VERSIONS_ENV)
 
 TOOLS = $(COMPOSE) --profile tools
 
@@ -197,3 +204,36 @@ stop-llama: check-env
 
 start-llama: check-env
 	@$(COMPOSE) up -d llama-server --pull never --wait
+
+
+.PHONY: smoke-history db-history
+
+smoke-history:
+	@python3 tools/smoke_history.py
+
+
+db-history: check-env
+	@$(COMPOSE) exec -T postgres sh -lc \
+		'psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -x -c "SELECT c.id AS conversation_id, c.owner_id, t.turn, t.domain, t.risk, t.source, left(t.query, 80) AS query, t.created_at FROM conversation_turns AS t JOIN conversations AS c ON c.id = t.conversation_id ORDER BY t.created_at DESC LIMIT 20;"'
+
+
+.PHONY: logs-tail
+
+logs-tail: check-env
+	@$(COMPOSE) logs \
+		--tail=$${LINES:-150} \
+		$(if $(SERVICE),$(SERVICE),)
+
+
+.PHONY: env-info
+
+env-info:
+	@echo "=== shell overrides ==="
+	@env | grep -E \
+		'^(CHATBOT_IMAGE|HAYHOOKS_IMAGE|LLAMA_CPU_IMAGE|POSTGRES_IMAGE|EMBEDDING_MODEL|EMBEDDING_DIMENSION)=' \
+		|| echo "(none)"
+	@echo
+	@echo "=== versions.env ==="
+	@grep -E \
+		'^(CHATBOT_IMAGE|HAYHOOKS_IMAGE|LLAMA_CPU_IMAGE|POSTGRES_IMAGE|EMBEDDING_MODEL|EMBEDDING_DIMENSION)=' \
+		"$(VERSIONS_ENV)"

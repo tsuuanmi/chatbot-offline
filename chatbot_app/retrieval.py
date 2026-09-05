@@ -5,12 +5,12 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from functools import lru_cache
-from pathlib import Path
-from urllib.parse import quote
 
 from haystack import Document, Pipeline
 from haystack.components.joiners import DocumentJoiner
 from haystack.utils import Secret
+
+from chatbot_app.database import postgres_connection_string
 from haystack_integrations.components.embedders.fastembed import (
     FastembedDocumentEmbedder,
     FastembedTextEmbedder,
@@ -33,44 +33,6 @@ def _required_env(name: str) -> str:
         )
 
     return value
-
-
-def _read_secret(path_env: str) -> str:
-    path = Path(_required_env(path_env))
-
-    if not path.is_file():
-        raise RuntimeError(
-            f"Secret file does not exist: {path}"
-        )
-
-    value = path.read_text(
-        encoding="utf-8"
-    ).strip()
-
-    if not value:
-        raise RuntimeError(
-            f"Secret file is empty: {path}"
-        )
-
-    return value
-
-
-def postgres_connection_string() -> str:
-    host = _required_env("POSTGRES_HOST")
-    port = _required_env("POSTGRES_PORT")
-    database = _required_env("POSTGRES_DB")
-    user = _required_env("POSTGRES_USER")
-    password = _read_secret(
-        "POSTGRES_PASSWORD_FILE"
-    )
-
-    return (
-        "postgresql://"
-        f"{quote(user, safe='')}:"
-        f"{quote(password, safe='')}"
-        f"@{host}:{port}/"
-        f"{quote(database, safe='')}"
-    )
 
 
 def build_document_store(

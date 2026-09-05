@@ -16,7 +16,9 @@ class PipelineWrapper(BasePipelineWrapper):
     async def run_api_async(
         self,
         message: str,
+        conversation_id: str | None = None,
     ) -> dict[str, object]:
         return await self.chat.answer(
-            message
+            message,
+            conversation_id=conversation_id,
         )
