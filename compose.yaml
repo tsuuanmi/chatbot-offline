@@ -193,6 +193,7 @@ services:
 
     volumes:
       - ./pipelines:/app/pipelines:ro,z
+      - ./data/documents:/app/data/documents:ro,z
       - ./runtime/secrets/llama_api_key:/run/secrets/llama_api_key:ro,z
       - ./runtime/secrets/postgres_password:/run/secrets/postgres_password:ro,z
 

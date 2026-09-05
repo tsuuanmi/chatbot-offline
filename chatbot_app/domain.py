@@ -6,6 +6,7 @@ import json
 import math
 import os
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
@@ -137,3 +138,8 @@ class DomainClassifier:
             class_scores=class_scores,
             risk_score=risk_score,
         )
+
+
+@lru_cache
+def get_domain_classifier() -> DomainClassifier:
+    return DomainClassifier()

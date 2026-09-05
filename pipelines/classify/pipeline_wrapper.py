@@ -2,25 +2,33 @@
 
 from hayhooks import BasePipelineWrapper
 
-from chatbot_app.domain import DomainClassifier
-from chatbot_app.policy import DomainPolicy
+from chatbot_app.domain import (
+    get_domain_classifier,
+)
+from chatbot_app.policy import (
+    get_domain_policy,
+)
 
 
 class PipelineWrapper(BasePipelineWrapper):
-    """Expose raw scores and final policy decision."""
-
     skip_mcp = True
 
     def setup(self) -> None:
-        self.classifier = DomainClassifier()
-        self.policy = DomainPolicy()
+        self.classifier = get_domain_classifier()
+        self.policy = get_domain_policy()
 
     def run_api(
         self,
         query: str,
     ) -> dict[str, object]:
-        scores = self.classifier.classify(query)
-        decision = self.policy.decide(query, scores)
+        scores = self.classifier.classify(
+            query
+        )
+
+        decision = self.policy.decide(
+            query,
+            scores,
+        )
 
         return {
             "decision": decision.to_dict(),

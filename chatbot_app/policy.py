@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import asdict, dataclass
+from functools import lru_cache
 from pathlib import Path
 
 from chatbot_app.domain import ClassificationScores
@@ -160,3 +161,8 @@ class DomainPolicy:
             margin=scores.margin,
             risk_score=scores.risk_score,
         )
+
+
+@lru_cache
+def get_domain_policy() -> DomainPolicy:
+    return DomainPolicy()
