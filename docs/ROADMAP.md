@@ -221,7 +221,9 @@ No external exposure before M7 is complete.
 
 ## M8 — Fully Offline Distribution
 
-Status: NEXT
+Status: IN PROGRESS
+
+Current focus: M8.1 — offline runtime bundle.
 
 Goals:
 
@@ -236,6 +238,16 @@ Goals:
 * backup / restore workflow
 
 ---
+
+M8.1 — offline runtime bundle: COMPLETE
+
+M8.2 — fresh offline installation: COMPLETE
+
+M8.3 — offline operations: COMPLETE
+
+Ubuntu platform acceptance: COMPLETE
+
+RHEL + SELinux Enforcing acceptance: PENDING
 
 ## M9 — Optional GPU
 

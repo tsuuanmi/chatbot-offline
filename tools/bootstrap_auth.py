@@ -69,6 +69,7 @@ def _require_private_file(
     path: Path,
     *,
     label: str,
+    allowed_modes: set[int],
 ) -> None:
     if not path.is_file():
         raise RuntimeError(
@@ -84,16 +85,17 @@ def _require_private_file(
         path.stat().st_mode
     )
 
-    if mode not in {
-        0o400,
-        0o440,
-        0o600,
-        0o640,
-    }:
+    if mode not in allowed_modes:
+        expected = "/".join(
+            f"{value:04o}"
+            for value in sorted(
+                allowed_modes
+            )
+        )
+
         raise RuntimeError(
             f"{label} permissions are invalid: "
-            f"{mode:04o}; expected private "
-            "0400/0440/0600/0640"
+            f"{mode:04o}; expected {expected}"
         )
 
 
@@ -101,11 +103,21 @@ def check() -> None:
     _require_private_file(
         REGISTRY_PATH,
         label="auth registry",
+        allowed_modes={
+            0o400,
+            0o440,
+            0o600,
+            0o640,
+        },
     )
 
     _require_private_file(
         CLIENT_KEY_PATH,
         label="client API key",
+        allowed_modes={
+            0o400,
+            0o600,
+        },
     )
 
     registry = AuthRegistry.from_file(

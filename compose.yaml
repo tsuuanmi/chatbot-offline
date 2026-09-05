@@ -5,6 +5,9 @@ services:
     image: ${POSTGRES_IMAGE}
     pull_policy: never
 
+    group_add:
+      - "${CHATBOT_SECRET_GID}"
+
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_DB: ${POSTGRES_DB}
@@ -39,6 +42,9 @@ services:
 
     image: ${POSTGRES_IMAGE}
     pull_policy: never
+
+    group_add:
+      - "${CHATBOT_SECRET_GID}"
 
     entrypoint:
       - /bin/sh
@@ -79,6 +85,9 @@ services:
     image: ${CHATBOT_IMAGE}
     pull_policy: never
 
+    group_add:
+      - "${CHATBOT_SECRET_GID}"
+
     entrypoint:
       - python
       - /app/tools/index_knowledge.py
@@ -112,6 +121,9 @@ services:
   llama-server:
     image: ${LLAMA_CPU_IMAGE}
     pull_policy: never
+
+    group_add:
+      - "${CHATBOT_SECRET_GID}"
 
     command:
       - -m

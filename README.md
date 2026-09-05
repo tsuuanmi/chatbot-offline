@@ -75,7 +75,7 @@ Core architectural requirements:
 * M6B.3 — Authentication hardening: COMPLETE
 * M6C — Streaming API: COMPLETE
 * M7 — Nginx and production hardening: COMPLETE
-* M8 — Fully offline distribution for Ubuntu and RHEL: NEXT
+* M8 — Fully offline distribution for Ubuntu and RHEL: IN PROGRESS — Ubuntu validated; RHEL/SELinux acceptance pending
 * M9 — Optional GPU acceleration: PENDING
 * M10 — Final cleanup and release acceptance: PENDING
 

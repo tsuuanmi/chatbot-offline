@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -50,6 +51,39 @@ def main() -> None:
 
         if value:
             secrets.append(value)
+
+    registry_path = Path(
+        "runtime/secrets/chat_auth.json"
+    )
+
+    if registry_path.is_file():
+        registry = json.loads(
+            registry_path.read_text(
+                encoding="utf-8"
+            )
+        )
+
+        for identity in registry.get(
+            "identities",
+            [],
+        ):
+            if not isinstance(
+                identity,
+                dict,
+            ):
+                continue
+
+            digest = identity.get(
+                "api_key_sha256"
+            )
+
+            if isinstance(
+                digest,
+                str,
+            ) and digest:
+                secrets.append(
+                    digest
+                )
 
     logs = run(
         "docker",

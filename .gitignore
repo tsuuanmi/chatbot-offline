@@ -31,3 +31,6 @@ runtime/
 .idea/
 .vscode/
 .DS_Store
+
+# Generated offline bundles
+dist/

@@ -425,3 +425,29 @@ audit-secrets:
 m7-accept: verify smoke-gateway-stream smoke-production audit-secrets
 	@echo
 	@echo "M7 ACCEPTANCE PASS"
+
+
+.PHONY: bundle bundle-verify
+
+bundle: check-env
+	@BUNDLE_VERSION="$(BUNDLE_VERSION)" \
+		./tools/build_offline_bundle.sh
+
+
+bundle-verify:
+	@test -n "$(BUNDLE_DIR)" || { \
+		echo "BUNDLE_DIR is required" >&2; \
+		exit 1; \
+	}
+	@./tools/verify_offline_bundle.sh "$(BUNDLE_DIR)"
+
+
+.PHONY: check-offline-scripts
+
+check-offline-scripts:
+	@bash -n offline/install.sh
+	@bash -n offline/manage.sh
+	@bash -n offline/accept.sh
+	@bash -n tools/build_offline_bundle.sh
+	@bash -n tools/verify_offline_bundle.sh
+	@echo "OFFLINE SCRIPT CHECK PASS"
