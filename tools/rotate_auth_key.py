@@ -37,7 +37,10 @@ def write_private(
     temporary_path = Path(temporary)
 
     try:
-        os.fchmod(descriptor, 0o600)
+        os.fchmod(
+            descriptor,
+            0o600,
+        )
 
         with os.fdopen(
             descriptor,
@@ -76,7 +79,9 @@ def main() -> None:
     owner = args.owner.strip()
 
     if not OWNER_PATTERN.fullmatch(owner):
-        raise SystemExit("invalid owner id")
+        raise SystemExit(
+            "invalid owner id"
+        )
 
     registry_path = Path(
         os.environ.get(
@@ -85,17 +90,45 @@ def main() -> None:
         )
     )
 
-    key_path = Path(args.key_file)
+    key_path = Path(
+        args.key_file
+    )
 
-    # Validate the current registry with production code first.
-    AuthRegistry.from_file(
+    registry = AuthRegistry.from_file(
         registry_path
     )
 
-    data = json.loads(
-        registry_path.read_text(
-            encoding="utf-8"
+    if not key_path.is_file():
+        raise RuntimeError(
+            "client key file does not exist"
         )
+
+    current_key = key_path.read_text(
+        encoding="utf-8"
+    ).strip()
+
+    current_identity = registry.authenticate(
+        current_key
+    )
+
+    if (
+        current_identity is None
+        or current_identity.owner_id != owner
+    ):
+        raise RuntimeError(
+            "client key file does not belong to requested owner"
+        )
+
+    original_registry = registry_path.read_text(
+        encoding="utf-8"
+    )
+
+    original_key = (
+        current_key + "\n"
+    )
+
+    data = json.loads(
+        original_registry
     )
 
     identities = data["identities"]
@@ -111,49 +144,83 @@ def main() -> None:
             "owner must exist exactly once"
         )
 
-    new_key = secrets.token_urlsafe(32)
-
-    new_digest = hashlib.sha256(
-        new_key.encode("utf-8")
-    ).hexdigest()
-
-    matching[0]["api_key_sha256"] = (
-        new_digest
+    new_key = secrets.token_urlsafe(
+        32
     )
 
-    write_private(
-        registry_path,
+    matching[0]["api_key_sha256"] = (
+        hashlib.sha256(
+            new_key.encode("utf-8")
+        ).hexdigest()
+    )
+
+    new_registry = (
         json.dumps(
             data,
             indent=2,
             sort_keys=True,
         )
-        + "\n",
+        + "\n"
     )
 
-    write_private(
-        key_path,
-        new_key + "\n",
-    )
-
-    # Validate final state using the same parser used by the server.
-    registry = AuthRegistry.from_file(
-        registry_path
-    )
-
-    identity = registry.authenticate(
-        key_path.read_text(
-            encoding="utf-8"
-        ).strip()
-    )
-
-    if (
-        identity is None
-        or identity.owner_id != owner
-    ):
-        raise RuntimeError(
-            "rotated credential validation failed"
+    try:
+        write_private(
+            key_path,
+            new_key + "\n",
         )
+
+        write_private(
+            registry_path,
+            new_registry,
+        )
+
+        final_registry = AuthRegistry.from_file(
+            registry_path
+        )
+
+        identity = final_registry.authenticate(
+            new_key
+        )
+
+        if (
+            identity is None
+            or identity.owner_id != owner
+        ):
+            raise RuntimeError(
+                "rotated credential validation failed"
+            )
+
+    except Exception as error:
+        rollback_errors = []
+
+        try:
+            write_private(
+                registry_path,
+                original_registry,
+            )
+        except Exception as rollback_error:
+            rollback_errors.append(
+                f"registry: {rollback_error}"
+            )
+
+        try:
+            write_private(
+                key_path,
+                original_key,
+            )
+        except Exception as rollback_error:
+            rollback_errors.append(
+                f"key: {rollback_error}"
+            )
+
+        if rollback_errors:
+            raise RuntimeError(
+                "credential rotation failed and rollback "
+                "was incomplete: "
+                + "; ".join(rollback_errors)
+            ) from error
+
+        raise
 
     print(
         f"AUTH ROTATION PASS owner_id={owner}"

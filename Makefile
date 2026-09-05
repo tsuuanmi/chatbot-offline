@@ -324,13 +324,13 @@ smoke-history-concurrency: check-env
 auth-bootstrap:
 	@CHAT_AUTH_REGISTRY_PATH="$(AUTH_REGISTRY)" \
 		CHAT_CLIENT_API_KEY_FILE="$(CLIENT_API_KEY)" \
-		python3 tools/bootstrap_auth.py
+		python3 -m tools.bootstrap_auth
 
 
 check-auth:
 	@CHAT_AUTH_REGISTRY_PATH="$(AUTH_REGISTRY)" \
 		CHAT_CLIENT_API_KEY_FILE="$(CLIENT_API_KEY)" \
-		python3 tools/bootstrap_auth.py --check
+		python3 -m tools.bootstrap_auth --check
 
 
 smoke-auth: check-auth
