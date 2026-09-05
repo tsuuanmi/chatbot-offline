@@ -1,5 +1,7 @@
 """Policy-controlled forensic chat endpoint."""
 
+from uuid import UUID
+
 from hayhooks import BasePipelineWrapper
 
 from chatbot_app.forensic_chat import (
@@ -16,9 +18,14 @@ class PipelineWrapper(BasePipelineWrapper):
     async def run_api_async(
         self,
         message: str,
-        conversation_id: str | None = None,
+        conversation_id: UUID | None = None,
     ) -> dict[str, object]:
         return await self.chat.answer(
             message,
-            conversation_id=conversation_id,
+            conversation_id=(
+                str(conversation_id)
+                if conversation_id
+                is not None
+                else None
+            ),
         )

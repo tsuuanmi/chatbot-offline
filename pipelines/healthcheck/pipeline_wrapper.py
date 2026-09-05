@@ -1,36 +1,19 @@
-"""Minimal Haystack pipeline used to validate the application runtime."""
+"""Application dependency readiness endpoint."""
 
-from haystack import Pipeline
-from haystack.components.builders import PromptBuilder
 from hayhooks import BasePipelineWrapper
+
+from chatbot_app.readiness import (
+    get_readiness,
+)
 
 
 class PipelineWrapper(BasePipelineWrapper):
-    """Minimal pipeline with no external dependencies."""
-
     skip_mcp = True
 
     def setup(self) -> None:
-        pipeline = Pipeline()
+        self.readiness = get_readiness()
 
-        pipeline.add_component(
-            "formatter",
-            PromptBuilder(
-                template="M1 OK | {{ message }}",
-            ),
-        )
-
-        self.pipeline = pipeline
-
-    def run_api(self, message: str = "ping") -> dict[str, str]:
-        result = self.pipeline.run(
-            {
-                "formatter": {
-                    "message": message,
-                }
-            }
-        )
-
-        return {
-            "response": result["formatter"]["prompt"],
-        }
+    async def run_api_async(
+        self,
+    ) -> dict[str, str]:
+        return await self.readiness.check()

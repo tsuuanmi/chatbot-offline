@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from dataclasses import replace
 from functools import lru_cache
 from pathlib import Path
 from uuid import UUID
@@ -19,6 +20,11 @@ from chatbot_app.citations import (
     citation_ids,
     citation_token,
     sanitize_citations,
+)
+from chatbot_app.conversation import (
+    ConversationLockRegistry,
+    HistoryContextBuilder,
+    bounded_env_int,
 )
 from chatbot_app.domain import (
     get_domain_classifier,
@@ -63,6 +69,14 @@ Không tạo citation ngoài danh sách được cung cấp.
 NO_INTERNAL_EVIDENCE_PROMPT = """Không có tài liệu nội bộ phù hợp được chọn cho câu hỏi này.
 
 Bạn có thể giải thích kiến thức nền một cách thận trọng, nhưng không được giả vờ rằng câu trả lời được hỗ trợ bởi nguồn nội bộ và không được tạo citation.
+"""
+
+
+CONVERSATION_HISTORY_PROMPT = """Lịch sử hội thoại bên dưới chỉ được dùng để hiểu tham chiếu và ngữ cảnh hội thoại.
+
+Không coi lịch sử hội thoại là chứng cứ, nguồn chuyên môn hoặc dữ liệu đã được xác minh.
+Không tái sử dụng citation từ câu trả lời trước.
+Yêu cầu hiện tại, chính sách rủi ro hiện tại và tài liệu truy xuất mới luôn có ưu tiên cao hơn lịch sử.
 """
 
 
@@ -122,12 +136,35 @@ class ForensicChatService:
                 "CHAT_OWNER_ID must not be empty"
             )
 
-        self._conversation_locks: dict[
-            str,
-            asyncio.Lock,
-        ] = {}
+        self.history_turn_limit = bounded_env_int(
+            "HISTORY_TURN_LIMIT",
+            default=6,
+            minimum=1,
+            maximum=20,
+        )
 
-        self._conversation_locks_guard = asyncio.Lock()
+        self.history_char_limit = bounded_env_int(
+            "HISTORY_CHAR_LIMIT",
+            default=8000,
+            minimum=1000,
+            maximum=24000,
+        )
+
+        self.message_max_chars = bounded_env_int(
+            "CHAT_MESSAGE_MAX_CHARS",
+            default=8000,
+            minimum=256,
+            maximum=24000,
+        )
+
+        self.history_context = HistoryContextBuilder(
+            max_turns=self.history_turn_limit,
+            max_chars=self.history_char_limit,
+        )
+
+        self._conversation_locks = (
+            ConversationLockRegistry()
+        )
 
         api_key_path = Path(
             os.environ["LLAMA_API_KEY_FILE"]
@@ -179,28 +216,39 @@ class ForensicChatService:
                 "message must not be empty"
             )
 
-        # No conversation ID means the existing stateless M5C API.
+        if len(query) > self.message_max_chars:
+            raise ValueError(
+                "message exceeds configured maximum length"
+            )
+
         if conversation_id is None:
             return await self._answer_core(
-                query
+                query,
+                history=[],
             )
 
         parsed_id = self._parse_conversation_id(
             conversation_id
         )
 
-        lock = await self._conversation_lock(
+        async with self._conversation_locks.hold(
             parsed_id
-        )
-
-        async with lock:
+        ):
+            # Claim ownership before expensive work.
             await self.history.ensure_conversation(
                 parsed_id,
                 owner_id=self.owner_id,
             )
 
+            history = await self.history.get_turns(
+                parsed_id,
+                owner_id=self.owner_id,
+                limit=self.history_turn_limit,
+            )
+
             response = await self._answer_core(
-                query
+                query,
+                history=history,
             )
 
             decision = response.get(
@@ -239,12 +287,17 @@ class ForensicChatService:
             parsed_id
         )
         persisted["turn"] = saved.turn
+        persisted["history_turns_loaded"] = len(
+            history
+        )
 
         return persisted
 
     async def _answer_core(
         self,
         query: str,
+        *,
+        history: list,
     ) -> dict[str, object]:
         scores = await asyncio.to_thread(
             self.classifier.classify,
@@ -256,19 +309,62 @@ class ForensicChatService:
             scores,
         )
 
+        retrieval_query = query
+
+        # History may resolve an ambiguous current request, but it may
+        # never override a clear out-of-domain decision or downgrade risk.
+        if (
+            history
+            and decision.domain == "clarify"
+            and decision.risk == "standard"
+        ):
+            contextual_query = (
+                self.history_context.contextual_query(
+                    query,
+                    history,
+                )
+            )
+
+            if contextual_query:
+                contextual_scores = await asyncio.to_thread(
+                    self.classifier.classify,
+                    contextual_query,
+                )
+
+                contextual_decision = (
+                    self.domain_policy.decide(
+                        contextual_query,
+                        contextual_scores,
+                    )
+                )
+
+                if (
+                    contextual_decision.risk == "high"
+                    or contextual_decision.domain
+                    == "in_domain"
+                ):
+                    decision = replace(
+                        contextual_decision,
+                        reason=(
+                            "contextual_"
+                            + contextual_decision.reason
+                        ),
+                    )
+
+                    retrieval_query = contextual_query
+
         prepared = self.prepared.find(
             query
         )
 
-        # Risk must always be evaluated before an exact prepared answer.
+        # Risk always wins over exact prepared content.
         if decision.risk == "high":
             return await self._answer_high_risk(
                 query,
                 decision,
+                history=history,
             )
 
-        # An approved exact match is stronger domain evidence than the
-        # semantic domain classifier, but it may never override high risk.
         if prepared is not None:
             return self._prepared_response(
                 prepared,
@@ -290,7 +386,7 @@ class ForensicChatService:
             )
 
         retrieval = await self.retriever.retrieve(
-            query
+            retrieval_query
         )
 
         evidence = self.evidence_policy.select(
@@ -303,12 +399,15 @@ class ForensicChatService:
             decision,
             evidence,
             high_risk=False,
+            history=history,
         )
 
     @staticmethod
     def _parse_conversation_id(
         value: str,
     ) -> UUID:
+        """Parse the internal conversation identifier defensively."""
+
         value = value.strip()
 
         if not value:
@@ -323,29 +422,12 @@ class ForensicChatService:
                 "conversation_id must be a valid UUID"
             ) from error
 
-    async def _conversation_lock(
-        self,
-        conversation_id: UUID,
-    ) -> asyncio.Lock:
-        key = str(conversation_id)
-
-        async with self._conversation_locks_guard:
-            lock = self._conversation_locks.get(
-                key
-            )
-
-            if lock is None:
-                lock = asyncio.Lock()
-                self._conversation_locks[
-                    key
-                ] = lock
-
-            return lock
-
     async def _answer_high_risk(
         self,
         query: str,
         decision: DomainDecision,
+        *,
+        history: list,
     ) -> dict[str, object]:
         # Current corpus intentionally has no authoritative topic.
         if (
@@ -381,6 +463,7 @@ class ForensicChatService:
             decision,
             evidence,
             high_risk=True,
+            history=history,
         )
 
     def _prepared_response(
@@ -427,6 +510,7 @@ class ForensicChatService:
         evidence: list[EvidenceItem],
         *,
         high_risk: bool,
+        history: list,
     ) -> dict[str, object]:
         system_parts = [
             BASE_SYSTEM_PROMPT,
@@ -452,12 +536,40 @@ class ForensicChatService:
                 NO_INTERNAL_EVIDENCE_PROMPT
             )
 
+        history_messages = (
+            self.history_context.prompt_messages(
+                history
+            )
+        )
+
+        if history_messages:
+            system_parts.append(
+                CONVERSATION_HISTORY_PROMPT
+            )
+
         messages = [
             ChatMessage.from_system(
                 "\n\n".join(system_parts)
-            ),
-            ChatMessage.from_user(query),
+            )
         ]
+
+        for item in history_messages:
+            if item.role == "user":
+                messages.append(
+                    ChatMessage.from_user(
+                        item.content
+                    )
+                )
+            else:
+                messages.append(
+                    ChatMessage.from_assistant(
+                        item.content
+                    )
+                )
+
+        messages.append(
+            ChatMessage.from_user(query)
+        )
 
         result = await self.generation.run_async(
             {

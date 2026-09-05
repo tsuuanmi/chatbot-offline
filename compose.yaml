@@ -193,6 +193,8 @@ services:
 
       CHAT_OWNER_ID: ${CHAT_OWNER_ID:-local-development}
       HISTORY_TURN_LIMIT: ${HISTORY_TURN_LIMIT:-6}
+      HISTORY_CHAR_LIMIT: ${HISTORY_CHAR_LIMIT:-8000}
+      CHAT_MESSAGE_MAX_CHARS: ${CHAT_MESSAGE_MAX_CHARS:-8000}
 
     volumes:
       - ./pipelines:/app/pipelines:ro,z
@@ -215,7 +217,7 @@ services:
           "CMD",
           "python",
           "-c",
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:1416/status', timeout=3).read()"
+          "import urllib.request; r=urllib.request.Request('http://127.0.0.1:1416/healthcheck/run', data=b'{}', headers={'Content-Type':'application/json'}); urllib.request.urlopen(r, timeout=5).read()"
         ]
       interval: 10s
       timeout: 5s

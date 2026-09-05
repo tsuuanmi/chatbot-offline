@@ -90,11 +90,12 @@ class ConversationRepository:
         await self.connect()
 
         async with self._pool.connection() as connection:
-            await self._ensure_conversation(
-                connection,
-                conversation_id,
-                owner_id,
-            )
+            async with connection.transaction():
+                await self._ensure_conversation(
+                    connection,
+                    conversation_id,
+                    owner_id,
+                )
 
     async def append_turn(
         self,
@@ -110,94 +111,96 @@ class ConversationRepository:
         await self.connect()
 
         async with self._pool.connection() as connection:
-            # Serialize writes for one owner/conversation pair.
-            await connection.execute(
-                """
-                SELECT pg_advisory_xact_lock(
-                    hashtextextended(%s, 0)
-                )
-                """,
-                (
-                    f"{owner_id}:{conversation_id}",
-                ),
-            )
-
-            await self._ensure_conversation(
-                connection,
-                conversation_id,
-                owner_id,
-            )
-
-            cursor = await connection.execute(
-                """
-                SELECT COALESCE(MAX(turn), 0) + 1 AS next_turn
-                FROM conversation_turns
-                WHERE conversation_id = %s
-                """,
-                (conversation_id,),
-            )
-
-            row = await cursor.fetchone()
-
-            if row is None:
-                raise RuntimeError(
-                    "Unable to allocate conversation turn"
+            async with connection.transaction():
+                # Serialize allocation and write for one
+                # owner/conversation pair in the same transaction.
+                await connection.execute(
+                    """
+                    SELECT pg_advisory_xact_lock(
+                        hashtextextended(%s, 0)
+                    )
+                    """,
+                    (
+                        f"{owner_id}:{conversation_id}",
+                    ),
                 )
 
-            next_turn = int(
-                row["next_turn"]
-            )
-
-            cursor = await connection.execute(
-                """
-                INSERT INTO conversation_turns (
+                await self._ensure_conversation(
+                    connection,
                     conversation_id,
-                    turn,
-                    query,
-                    answer,
-                    domain,
-                    risk,
-                    source
-                )
-                VALUES (
-                    %s, %s, %s, %s, %s, %s, %s
-                )
-                RETURNING
-                    conversation_id,
-                    turn,
-                    query,
-                    answer,
-                    domain,
-                    risk,
-                    source,
-                    created_at
-                """,
-                (
-                    conversation_id,
-                    next_turn,
-                    query,
-                    answer,
-                    domain,
-                    risk,
-                    source,
-                ),
-            )
-
-            saved = await cursor.fetchone()
-
-            if saved is None:
-                raise RuntimeError(
-                    "Conversation turn insert returned no row"
+                    owner_id,
                 )
 
-            await connection.execute(
-                """
-                UPDATE conversations
-                SET updated_at = now()
-                WHERE id = %s
-                """,
-                (conversation_id,),
-            )
+                cursor = await connection.execute(
+                    """
+                    SELECT COALESCE(MAX(turn), 0) + 1 AS next_turn
+                    FROM conversation_turns
+                    WHERE conversation_id = %s
+                    """,
+                    (conversation_id,),
+                )
+
+                row = await cursor.fetchone()
+
+                if row is None:
+                    raise RuntimeError(
+                        "Unable to allocate conversation turn"
+                    )
+
+                next_turn = int(
+                    row["next_turn"]
+                )
+
+                cursor = await connection.execute(
+                    """
+                    INSERT INTO conversation_turns (
+                        conversation_id,
+                        turn,
+                        query,
+                        answer,
+                        domain,
+                        risk,
+                        source
+                    )
+                    VALUES (
+                        %s, %s, %s, %s, %s, %s, %s
+                    )
+                    RETURNING
+                        conversation_id,
+                        turn,
+                        query,
+                        answer,
+                        domain,
+                        risk,
+                        source,
+                        created_at
+                    """,
+                    (
+                        conversation_id,
+                        next_turn,
+                        query,
+                        answer,
+                        domain,
+                        risk,
+                        source,
+                    ),
+                )
+
+                saved = await cursor.fetchone()
+
+                if saved is None:
+                    raise RuntimeError(
+                        "Conversation turn insert returned no row"
+                    )
+
+                await connection.execute(
+                    """
+                    UPDATE conversations
+                    SET updated_at = now()
+                    WHERE id = %s
+                    """,
+                    (conversation_id,),
+                )
 
         return self._to_turn(saved)
 

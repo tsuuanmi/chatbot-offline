@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import urllib.error
 import urllib.request
 from uuid import uuid4
 
@@ -28,11 +29,25 @@ def chat(
         },
     )
 
-    with urllib.request.urlopen(
-        request,
-        timeout=60,
-    ) as response:
-        return json.load(response)["result"]
+    try:
+        with urllib.request.urlopen(
+            request,
+            timeout=60,
+        ) as response:
+            return json.load(response)["result"]
+    except urllib.error.HTTPError as error:
+        body = error.read().decode(
+            "utf-8",
+            errors="replace",
+        )
+
+        print(
+            f"HTTP {error.code} "
+            f"{request.full_url}"
+        )
+        print(body)
+
+        raise
 
 
 def main() -> None:

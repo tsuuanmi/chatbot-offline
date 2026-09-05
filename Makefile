@@ -140,7 +140,7 @@ status:
 	@echo
 
 
-health: ps status
+health: ps status ready
 
 
 logs: check-env
@@ -174,9 +174,9 @@ llama-health: check-env
 
 
 test-policy:
-	@python3 tools/test_domain_policy.py \
+	@python3 tests/integration/test_domain_policy_api.py \
 		tests/data/domain_calibration.json
-	@python3 tools/test_domain_policy.py \
+	@python3 tests/integration/test_domain_policy_api.py \
 		tests/data/domain_boundary_calibration.json
 
 
@@ -189,7 +189,7 @@ check-python: check-env
 		python -c "from pathlib import Path; roots=[Path('/app/chatbot_app'),Path('/app/pipelines')]; files=sorted(p for root in roots for p in root.rglob('*.py')); [compile(p.read_text(encoding='utf-8'),str(p),'exec') for p in files]; print(f'PYTHON COMPILE OK ({len(files)} files)')"
 
 
-verify: config health test-policy smoke-m5c check-python
+verify: config health test-unit check-tests test-policy smoke-m5c smoke-api-contract check-python
 	@echo
 	@echo "VERIFY PASS"
 
@@ -257,3 +257,60 @@ image-info: check-env
 	@echo "=== running container ==="
 	@docker inspect chatbot-offline-chatbot-1 \
 		--format 'configured={{.Config.Image}} actual={{.Image}}'
+
+.PHONY: test test-unit test-integration
+
+test: test-unit
+
+
+test-unit:
+	@python3 -m unittest \
+		discover \
+		-s tests/unit \
+		-t . \
+		-p 'test_*.py' \
+		-v
+
+
+test-integration:
+	@python3 -m unittest \
+		discover \
+		-s tests/integration \
+		-t . \
+		-p 'test_*.py' \
+		-v
+
+.PHONY: check-tests
+
+check-tests:
+	@python3 -c "from pathlib import Path; files=sorted(Path('tests').rglob('*.py')); [compile(p.read_text(encoding='utf-8'),str(p),'exec') for p in files]; print(f'TEST PYTHON COMPILE OK ({len(files)} files)')"
+
+
+.PHONY: ready
+
+ready:
+	@curl -fsS \
+		-X POST \
+		http://127.0.0.1:1416/healthcheck/run \
+		-H 'Content-Type: application/json' \
+		-d '{}'
+	@echo
+
+
+.PHONY: smoke-api-contract
+
+smoke-api-contract:
+	@python3 tools/smoke_api_contract.py
+
+
+.PHONY: smoke-history-context
+
+smoke-history-context:
+	@python3 tools/smoke_history_context.py
+
+
+.PHONY: smoke-history-concurrency
+
+smoke-history-concurrency: check-env
+	@$(COMPOSE) exec -T chatbot \
+		python /app/tools/smoke_history_concurrency.py
