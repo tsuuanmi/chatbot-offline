@@ -91,6 +91,7 @@ mkdir -p \
     "$BUNDLE_DIR/runtime/models"
 
 cp compose.yaml "$BUNDLE_DIR/"
+cp compose.gpu.yaml "$BUNDLE_DIR/"
 cp .env.example "$BUNDLE_DIR/"
 cp -a offline "$BUNDLE_DIR/"
 cp versions.env "$BUNDLE_DIR/versions.env"

@@ -141,7 +141,7 @@ services:
       - --threads-batch
       - ${LLAMA_THREADS:-8}
       - --n-gpu-layers
-      - "0"
+      - "${LLAMA_GPU_LAYERS:-0}"
       - --parallel
       - "1"
       - --jinja

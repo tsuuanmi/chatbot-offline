@@ -15,6 +15,7 @@ COMPOSE = env \
 	-u CHATBOT_IMAGE \
 	-u HAYHOOKS_IMAGE \
 	-u LLAMA_CPU_IMAGE \
+	-u LLAMA_GPU_IMAGE \
 	-u POSTGRES_IMAGE \
 	-u NGINX_IMAGE \
 	-u EMBEDDING_MODEL \
@@ -452,6 +453,87 @@ check-offline-scripts:
 	@bash -n offline/install.sh
 	@bash -n offline/manage.sh
 	@bash -n offline/accept.sh
+	@bash -n offline/gpu.sh
 	@bash -n tools/build_offline_bundle.sh
 	@bash -n tools/verify_offline_bundle.sh
+	@bash -n tools/build_gpu_addon.sh
+	@bash -n tools/verify_gpu_addon.sh
 	@echo "OFFLINE SCRIPT CHECK PASS"
+
+
+LLAMA_GPU_LAYERS ?= 99
+
+GPU_COMPOSE = $(COMPOSE) \
+	-f compose.yaml \
+	-f compose.gpu.yaml
+
+
+.PHONY: gpu-config gpu-up gpu-ps gpu-down gpu-cpu
+
+gpu-config: check-env
+	@LLAMA_GPU_LAYERS="$(LLAMA_GPU_LAYERS)" \
+		$(GPU_COMPOSE) config >/dev/null
+	@echo "GPU COMPOSE CONFIG PASS"
+
+
+gpu-up: check-env
+	@LLAMA_GPU_LAYERS="$(LLAMA_GPU_LAYERS)" \
+		$(GPU_COMPOSE) up \
+			-d \
+			--pull never \
+			--force-recreate \
+			--wait \
+			llama-server
+	@LLAMA_GPU_LAYERS="$(LLAMA_GPU_LAYERS)" \
+		$(GPU_COMPOSE) up \
+			-d \
+			--pull never \
+			--wait
+
+
+gpu-ps: check-env
+	@LLAMA_GPU_LAYERS="$(LLAMA_GPU_LAYERS)" \
+		$(GPU_COMPOSE) ps
+
+
+gpu-down: check-env
+	@LLAMA_GPU_LAYERS="$(LLAMA_GPU_LAYERS)" \
+		$(GPU_COMPOSE) down
+
+
+gpu-cpu: check-env
+	@$(COMPOSE) up \
+		-d \
+		--pull never \
+		--force-recreate \
+		llama-server
+	@$(COMPOSE) up \
+		-d \
+		--pull never \
+		--wait
+
+
+.PHONY: gpu-runtime-check gpu-accept
+
+gpu-runtime-check: check-env
+	@python3 -m tools.check_gpu_runtime
+
+
+gpu-accept: gpu-up gpu-runtime-check smoke-gateway smoke-gateway-stream
+	@echo
+	@echo "M9 GPU ACCEPTANCE PASS"
+
+
+.PHONY: gpu-addon gpu-addon-verify
+
+gpu-addon: check-env gpu-config
+	@BUNDLE_VERSION="$(BUNDLE_VERSION)" \
+		./tools/build_gpu_addon.sh
+
+
+gpu-addon-verify:
+	@test -n "$(BUNDLE_DIR)" || { \
+		echo "BUNDLE_DIR is required" >&2; \
+		exit 1; \
+	}
+	@./tools/verify_gpu_addon.sh "$(BUNDLE_DIR)"

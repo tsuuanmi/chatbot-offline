@@ -249,14 +249,28 @@ RHEL + SELinux Enforcing acceptance: PENDING
 
 ## M9 — Optional GPU
 
-Status: PENDING
+Status: COMPLETE
 
 Requirements:
 
-* optional profile
-* CPU fallback remains available
-* identical behavioral acceptance
-* measurable performance benefit
+* optional NVIDIA CUDA profile: COMPLETE
+* CPU fallback remains available: COMPLETE
+* identical behavioral acceptance: COMPLETE
+* measurable performance benefit: COMPLETE
+* optional offline NVIDIA GPU add-on: COMPLETE
+
+Reference measurement on Quadro RTX 5000:
+
+* CPU median total latency: 15.51 s
+* GPU median total latency: 2.97 s
+* total latency speedup: 5.22x
+* CPU median stream rate: 105.9 chars/s
+* GPU median stream rate: 548.2 chars/s
+* stream-rate speedup: 5.18x
+
+The CPU runtime remains the mandatory reference deployment.
+GPU acceleration is optional and does not alter API, policy,
+retrieval, authentication, or streaming semantics.
 
 ---
 

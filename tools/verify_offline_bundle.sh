@@ -6,6 +6,7 @@ BUNDLE_DIR="${1:?Usage: verify_offline_bundle.sh BUNDLE_DIR}"
 
 required=(
     compose.yaml
+    compose.gpu.yaml
     versions.env
     .env.example
     BUNDLE-MANIFEST.txt
@@ -14,6 +15,7 @@ required=(
     offline/install.sh
     offline/manage.sh
     offline/accept.sh
+    offline/gpu.sh
     pipelines
     database
     data/documents
@@ -38,6 +40,11 @@ if find "$BUNDLE_DIR" \
     | grep -q .
 then
     echo "ERROR: runtime secret included in bundle" >&2
+    exit 1
+fi
+
+if [[ -e "$BUNDLE_DIR/images/llama-gpu.tar" ]]; then
+    echo "ERROR: optional GPU image must not be included in CPU bundle" >&2
     exit 1
 fi
 
