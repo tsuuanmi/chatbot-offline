@@ -1,0 +1,37 @@
+name: chatbot-offline
+
+services:
+  chatbot:
+    image: ${HAYHOOKS_IMAGE}
+    pull_policy: never
+
+    environment:
+      HAYHOOKS_HOST: 0.0.0.0
+      HAYHOOKS_PORT: "1416"
+      HAYHOOKS_PIPELINES_DIR: /app/pipelines
+      HAYHOOKS_SHOW_TRACEBACKS: "false"
+      LOG: INFO
+
+    volumes:
+      - ./pipelines:/app/pipelines:ro,z
+
+    ports:
+      - "127.0.0.1:1416:1416"
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:1416/status', timeout=3).read()"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+    restart: unless-stopped
+
+    security_opt:
+      - no-new-privileges:true
