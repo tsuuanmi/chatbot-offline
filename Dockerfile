@@ -40,6 +40,7 @@ print(f"Embedding model ready: dimension={actual}")
 PY
 
 COPY chatbot_app /app/chatbot_app
+COPY data/policies /app/data/policies
 COPY tools /app/tools
 
 ENV PYTHONPATH=/app \
