@@ -60,7 +60,6 @@ services:
         condition: service_healthy
 
     restart: "no"
-
     read_only: true
 
     tmpfs:
@@ -68,6 +67,43 @@ services:
 
     cap_drop:
       - ALL
+
+    security_opt:
+      - no-new-privileges:true
+
+
+  index-knowledge:
+    profiles:
+      - tools
+
+    image: ${CHATBOT_IMAGE}
+    pull_policy: never
+
+    entrypoint:
+      - python
+      - /app/tools/index_knowledge.py
+
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL}
+      EMBEDDING_DIMENSION: ${EMBEDDING_DIMENSION}
+      EMBEDDING_THREADS: ${EMBEDDING_THREADS:-4}
+      FASTEMBED_CACHE_PATH: /opt/models/fastembed
+
+    volumes:
+      - ./data/documents:/data:ro,z
+      - ./runtime/secrets/postgres_password:/run/secrets/postgres_password:ro,z
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    restart: "no"
 
     security_opt:
       - no-new-privileges:true
@@ -130,7 +166,7 @@ services:
 
 
   chatbot:
-    image: ${HAYHOOKS_IMAGE}
+    image: ${CHATBOT_IMAGE}
     pull_policy: never
 
     environment:
@@ -144,14 +180,28 @@ services:
       LLAMA_API_KEY_FILE: /run/secrets/llama_api_key
       LLAMA_MODEL_ALIAS: ${LLAMA_MODEL_ALIAS}
 
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL}
+      EMBEDDING_DIMENSION: ${EMBEDDING_DIMENSION}
+      EMBEDDING_THREADS: ${EMBEDDING_THREADS:-4}
+      FASTEMBED_CACHE_PATH: /opt/models/fastembed
+
     volumes:
       - ./pipelines:/app/pipelines:ro,z
       - ./runtime/secrets/llama_api_key:/run/secrets/llama_api_key:ro,z
+      - ./runtime/secrets/postgres_password:/run/secrets/postgres_password:ro,z
 
     ports:
       - "127.0.0.1:1416:1416"
 
     depends_on:
+      postgres:
+        condition: service_healthy
       llama-server:
         condition: service_healthy
 
@@ -165,8 +215,8 @@ services:
         ]
       interval: 10s
       timeout: 5s
-      retries: 10
-      start_period: 10s
+      retries: 20
+      start_period: 20s
 
     restart: unless-stopped
 
