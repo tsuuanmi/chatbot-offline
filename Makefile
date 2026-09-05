@@ -458,6 +458,7 @@ check-offline-scripts:
 	@bash -n tools/verify_offline_bundle.sh
 	@bash -n tools/build_gpu_addon.sh
 	@bash -n tools/verify_gpu_addon.sh
+	@bash -n tools/verify_release_provenance.sh
 	@echo "OFFLINE SCRIPT CHECK PASS"
 
 
@@ -537,3 +538,19 @@ gpu-addon-verify:
 		exit 1; \
 	}
 	@./tools/verify_gpu_addon.sh "$(BUNDLE_DIR)"
+
+.PHONY: release-source-accept release-provenance
+
+release-source-accept: m7-accept check-offline-scripts check-secret-groups gpu-config
+	@echo
+	@echo "RELEASE SOURCE ACCEPTANCE PASS"
+
+
+release-provenance:
+	@test -n "$(BUNDLE_DIR)" || { \
+		echo "BUNDLE_DIR is required" >&2; \
+		exit 1; \
+	}
+	@./tools/verify_release_provenance.sh \
+		"$(BUNDLE_DIR)" \
+		"$(GPU_BUNDLE_DIR)"

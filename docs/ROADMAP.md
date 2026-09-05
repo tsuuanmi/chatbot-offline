@@ -276,7 +276,7 @@ retrieval, authentication, or streaming semantics.
 
 ## M10 — Final Cleanup and Release Acceptance
 
-Status: PENDING
+Status: IN PROGRESS
 
 Goals:
 
@@ -288,7 +288,8 @@ Goals:
 * CPU performance baseline
 * concurrency baseline
 * restart/recovery test
-* backup/restore test
+* persistent-state recovery verification
+* release artifact provenance verification
 * production release checklist
 
 ---
