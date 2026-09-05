@@ -237,3 +237,23 @@ env-info:
 	@grep -E \
 		'^(CHATBOT_IMAGE|HAYHOOKS_IMAGE|LLAMA_CPU_IMAGE|POSTGRES_IMAGE|EMBEDDING_MODEL|EMBEDDING_DIMENSION)=' \
 		"$(VERSIONS_ENV)"
+
+
+.PHONY: rebuild image-info
+
+rebuild: build up-recreate
+	@echo "REBUILD OK"
+
+
+image-info: check-env
+	@echo "=== versions.env ==="
+	@grep '^CHATBOT_IMAGE=' "$(VERSIONS_ENV)"
+	@echo
+	@echo "=== compose resolved ==="
+	@$(COMPOSE) config \
+		| sed -n '/^  chatbot:/,/^  [a-zA-Z]/p' \
+		| grep 'image:'
+	@echo
+	@echo "=== running container ==="
+	@docker inspect chatbot-offline-chatbot-1 \
+		--format 'configured={{.Config.Image}} actual={{.Image}}'
