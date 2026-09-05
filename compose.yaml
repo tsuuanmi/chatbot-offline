@@ -1,6 +1,60 @@
 name: chatbot-offline
 
 services:
+  llama-server:
+    image: ${LLAMA_CPU_IMAGE}
+    pull_policy: never
+
+    command:
+      - -m
+      - /models/${LLAMA_MODEL_NAME}
+      - --alias
+      - ${LLAMA_MODEL_ALIAS}
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+      - --ctx-size
+      - ${LLAMA_CTX_SIZE:-8192}
+      - --threads
+      - ${LLAMA_THREADS:-8}
+      - --threads-batch
+      - ${LLAMA_THREADS:-8}
+      - --n-gpu-layers
+      - "0"
+      - --parallel
+      - "1"
+      - --jinja
+      - --reasoning
+      - "off"
+      - --api-key
+      - ${LLAMA_API_KEY}
+
+    volumes:
+      - ${MODEL_DIR}:/models:ro,z
+
+    expose:
+      - "8080"
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "curl",
+          "-fsS",
+          "http://127.0.0.1:8080/health"
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 120
+      start_period: 20s
+
+    restart: unless-stopped
+
+    security_opt:
+      - no-new-privileges:true
+
+
   chatbot:
     image: ${HAYHOOKS_IMAGE}
     pull_policy: never
@@ -12,11 +66,19 @@ services:
       HAYHOOKS_SHOW_TRACEBACKS: "false"
       LOG: INFO
 
+      LLAMA_BASE_URL: http://llama-server:8080/v1
+      LLAMA_API_KEY: ${LLAMA_API_KEY}
+      LLAMA_MODEL_ALIAS: ${LLAMA_MODEL_ALIAS}
+
     volumes:
       - ./pipelines:/app/pipelines:ro,z
 
     ports:
       - "127.0.0.1:1416:1416"
+
+    depends_on:
+      llama-server:
+        condition: service_healthy
 
     healthcheck:
       test:
