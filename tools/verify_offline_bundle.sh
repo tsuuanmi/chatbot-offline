@@ -11,6 +11,9 @@ required=(
     BUNDLE-MANIFEST.txt
     SHA256SUMS
     nginx/nginx.conf
+    offline/install.sh
+    offline/manage.sh
+    offline/accept.sh
     pipelines
     database
     data/documents
@@ -42,6 +45,60 @@ if [[ -f "$BUNDLE_DIR/.env" ]]; then
     echo "ERROR: private .env included in bundle" >&2
     exit 1
 fi
+
+python3 - "$BUNDLE_DIR/compose.yaml" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+lines = path.read_text(
+    encoding="utf-8"
+).splitlines()
+
+inside = False
+block = []
+
+for line in lines:
+    if line == "  chatbot:":
+        inside = True
+        block.append(line)
+        continue
+
+    if inside:
+        if (
+            line.startswith("  ")
+            and not line.startswith("    ")
+            and line.endswith(":")
+        ):
+            break
+
+        block.append(line)
+
+if not block:
+    raise SystemExit(
+        "ERROR: chatbot service missing from production compose"
+    )
+
+if any(
+    line == "    ports:"
+    for line in block
+):
+    raise SystemExit(
+        "ERROR: production chatbot publishes host ports"
+    )
+
+if not any(
+    line == "    expose:"
+    for line in block
+):
+    raise SystemExit(
+        "ERROR: production chatbot internal expose is missing"
+    )
+
+print(
+    "PASS production chatbot network boundary"
+)
+PY
 
 (
     cd "$BUNDLE_DIR"

@@ -9,6 +9,28 @@ ROOT="$(
 
 cd "$ROOT"
 
+SOURCE_STATE="clean"
+
+if ! git diff --quiet --ignore-submodules --; then
+    SOURCE_STATE="dirty"
+fi
+
+if ! git diff --cached --quiet --ignore-submodules --; then
+    SOURCE_STATE="dirty"
+fi
+
+if [[ -n "$(git ls-files --others --exclude-standard)" ]]; then
+    SOURCE_STATE="dirty"
+fi
+
+if [[ "$SOURCE_STATE" == "dirty" ]] &&
+   [[ "${ALLOW_DIRTY_BUNDLE:-0}" != "1" ]]
+then
+    echo "ERROR: refusing to build release bundle from a dirty working tree" >&2
+    echo "Commit changes first, or use ALLOW_DIRTY_BUNDLE=1 for development testing" >&2
+    exit 1
+fi
+
 source .env
 source versions.env
 
@@ -183,6 +205,7 @@ PY
 cat > "$BUNDLE_DIR/BUNDLE-MANIFEST.txt" <<EOF
 bundle_version=${BUNDLE_VERSION}
 source_git_sha=${GIT_SHA}
+source_state=${SOURCE_STATE}
 architecture=$(uname -m)
 
 chatbot_image=${CHATBOT_TAG}

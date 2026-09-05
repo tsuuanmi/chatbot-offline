@@ -427,9 +427,13 @@ m7-accept: verify smoke-gateway-stream smoke-production audit-secrets
 	@echo "M7 ACCEPTANCE PASS"
 
 
-.PHONY: bundle bundle-verify
+.PHONY: check-secret-groups bundle bundle-verify
 
-bundle: check-env
+check-secret-groups: check-env
+	@python3 -m tools.check_secret_groups
+
+
+bundle: check-env check-offline-scripts check-secret-groups
 	@BUNDLE_VERSION="$(BUNDLE_VERSION)" \
 		./tools/build_offline_bundle.sh
 

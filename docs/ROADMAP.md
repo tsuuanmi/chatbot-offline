@@ -223,19 +223,17 @@ No external exposure before M7 is complete.
 
 Status: IN PROGRESS
 
-Current focus: M8.1 — offline runtime bundle.
-
 Goals:
 
 * reproducible offline bundle
-* pinned images
+* pinned runtime images
 * pinned model files
 * checksums
-* Ubuntu installer
-* RHEL installer
-* SELinux-safe deployment
-* no network pulls during install
-* backup / restore workflow
+* one portable installation workflow for Ubuntu and RHEL
+* SELinux Enforcing-safe deployment
+* no network pulls during installation
+* minimal offline operations: start, stop, status, logs, reindex, and verify
+* safe refusal when persistent database state exists but credentials are missing
 
 ---
 
