@@ -6,6 +6,8 @@ SHELL := /bin/bash
 VERSIONS_ENV ?= versions.env
 RUNTIME_ENV ?= .env
 APP_TAG ?= chatbot-offline/app:local
+AUTH_REGISTRY ?= runtime/secrets/chat_auth.json
+CLIENT_API_KEY ?= runtime/secrets/chat_api_key
 
 COMPOSE = env \
 	-u CHATBOT_IMAGE \
@@ -107,11 +109,11 @@ build: check-env
 	echo "CHATBOT_IMAGE=$$image_id"
 
 
-up: check-env
+up: check-env check-auth
 	@$(COMPOSE) up -d --pull never --wait
 
 
-up-recreate: check-env
+up-recreate: check-env check-auth
 	@$(COMPOSE) up \
 		-d \
 		--pull never \
@@ -126,7 +128,8 @@ down: check-env
 restart: down up
 
 
-offline-restart: down
+offline-restart: check-env check-auth
+	@$(COMPOSE) down
 	@$(COMPOSE) up -d --pull never --wait
 	@echo "OFFLINE RESTART OK"
 
@@ -173,15 +176,15 @@ llama-health: check-env
 	@echo
 
 
-test-policy:
-	@python3 tests/integration/test_domain_policy_api.py \
+test-policy: check-auth
+	@CHAT_CLIENT_API_KEY_FILE="$(CLIENT_API_KEY)" python3 -m tests.integration.test_domain_policy_api \
 		tests/data/domain_calibration.json
-	@python3 tests/integration/test_domain_policy_api.py \
+	@CHAT_CLIENT_API_KEY_FILE="$(CLIENT_API_KEY)" python3 -m tests.integration.test_domain_policy_api \
 		tests/data/domain_boundary_calibration.json
 
 
-smoke-m5c:
-	@python3 tools/smoke_m5c.py
+smoke-m5c: check-auth
+	@CHAT_CLIENT_API_KEY_FILE="$(CLIENT_API_KEY)" python3 tools/smoke_m5c.py
 
 
 check-python: check-env
@@ -208,8 +211,8 @@ start-llama: check-env
 
 .PHONY: smoke-history db-history
 
-smoke-history:
-	@python3 tools/smoke_history.py
+smoke-history: check-auth
+	@CHAT_CLIENT_API_KEY_FILE="$(CLIENT_API_KEY)" python3 tools/smoke_history.py
 
 
 db-history: check-env
@@ -299,14 +302,14 @@ ready:
 
 .PHONY: smoke-api-contract
 
-smoke-api-contract:
-	@python3 tools/smoke_api_contract.py
+smoke-api-contract: check-auth
+	@CHAT_CLIENT_API_KEY_FILE="$(CLIENT_API_KEY)" python3 tools/smoke_api_contract.py
 
 
 .PHONY: smoke-history-context
 
-smoke-history-context:
-	@python3 tools/smoke_history_context.py
+smoke-history-context: check-auth
+	@CHAT_CLIENT_API_KEY_FILE="$(CLIENT_API_KEY)" python3 tools/smoke_history_context.py
 
 
 .PHONY: smoke-history-concurrency
@@ -314,3 +317,28 @@ smoke-history-context:
 smoke-history-concurrency: check-env
 	@$(COMPOSE) exec -T chatbot \
 		python /app/tools/smoke_history_concurrency.py
+
+
+.PHONY: auth-bootstrap check-auth smoke-auth
+
+auth-bootstrap:
+	@CHAT_AUTH_REGISTRY_PATH="$(AUTH_REGISTRY)" \
+		CHAT_CLIENT_API_KEY_FILE="$(CLIENT_API_KEY)" \
+		python3 tools/bootstrap_auth.py
+
+
+check-auth:
+	@CHAT_AUTH_REGISTRY_PATH="$(AUTH_REGISTRY)" \
+		CHAT_CLIENT_API_KEY_FILE="$(CLIENT_API_KEY)" \
+		python3 tools/bootstrap_auth.py --check
+
+
+smoke-auth: check-auth
+	@CHAT_CLIENT_API_KEY_FILE="$(CLIENT_API_KEY)" \
+		python3 tools/smoke_auth.py
+
+
+.PHONY: smoke-ownership
+
+smoke-ownership: check-auth
+	@python3 tools/smoke_ownership.py

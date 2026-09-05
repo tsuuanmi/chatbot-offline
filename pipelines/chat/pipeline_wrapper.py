@@ -2,10 +2,15 @@
 
 from uuid import UUID
 
+from fastapi import HTTPException
+
 from hayhooks import BasePipelineWrapper
 
 from chatbot_app.forensic_chat import (
     get_forensic_chat,
+)
+from chatbot_app.history import (
+    ConversationOwnershipError,
 )
 
 
@@ -20,12 +25,18 @@ class PipelineWrapper(BasePipelineWrapper):
         message: str,
         conversation_id: UUID | None = None,
     ) -> dict[str, object]:
-        return await self.chat.answer(
-            message,
-            conversation_id=(
-                str(conversation_id)
-                if conversation_id
-                is not None
-                else None
-            ),
-        )
+        try:
+            return await self.chat.answer(
+                message,
+                conversation_id=(
+                    str(conversation_id)
+                    if conversation_id
+                    is not None
+                    else None
+                ),
+            )
+        except ConversationOwnershipError as error:
+            raise HTTPException(
+                status_code=404,
+                detail="Conversation not found",
+            ) from error

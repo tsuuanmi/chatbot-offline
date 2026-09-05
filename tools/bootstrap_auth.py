@@ -1,0 +1,232 @@
+"""Create and validate local offline authentication secrets."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import secrets
+import sys
+from pathlib import Path
+
+
+DEFAULT_OWNER_ID = "local-development"
+
+REGISTRY_PATH = Path(
+    os.environ.get(
+        "CHAT_AUTH_REGISTRY_PATH",
+        "runtime/secrets/chat_auth.json",
+    )
+)
+
+CLIENT_KEY_PATH = Path(
+    os.environ.get(
+        "CHAT_CLIENT_API_KEY_FILE",
+        "runtime/secrets/chat_api_key",
+    )
+)
+
+
+def _write_exclusive(
+    path: Path,
+    content: str,
+) -> None:
+    descriptor = os.open(
+        path,
+        (
+            os.O_WRONLY
+            | os.O_CREAT
+            | os.O_EXCL
+        ),
+        0o600,
+    )
+
+    try:
+        with os.fdopen(
+            descriptor,
+            "w",
+            encoding="utf-8",
+        ) as handle:
+            handle.write(
+                content
+            )
+            handle.flush()
+            os.fsync(
+                handle.fileno()
+            )
+    except Exception:
+        path.unlink(
+            missing_ok=True
+        )
+        raise
+
+
+def check() -> None:
+    if not REGISTRY_PATH.is_file():
+        raise RuntimeError(
+            f"Missing auth registry: {REGISTRY_PATH}"
+        )
+
+    if not CLIENT_KEY_PATH.is_file():
+        raise RuntimeError(
+            f"Missing client API key: {CLIENT_KEY_PATH}"
+        )
+
+    registry = json.loads(
+        REGISTRY_PATH.read_text(
+            encoding="utf-8"
+        )
+    )
+
+    api_key = CLIENT_KEY_PATH.read_text(
+        encoding="utf-8"
+    ).strip()
+
+    digest = hashlib.sha256(
+        api_key.encode("utf-8")
+    ).hexdigest()
+
+    identities = registry.get(
+        "identities",
+        []
+    )
+
+    matches = [
+        item
+        for item in identities
+        if (
+            isinstance(item, dict)
+            and item.get(
+                "api_key_sha256"
+            )
+            == digest
+        )
+    ]
+
+    if len(matches) != 1:
+        raise RuntimeError(
+            "Client API key does not match exactly one registry identity"
+        )
+
+    owner_id = matches[0].get(
+        "owner_id"
+    )
+
+    if not owner_id:
+        raise RuntimeError(
+            "Matched auth identity has no owner_id"
+        )
+
+    print(
+        f"AUTH CONFIG PASS owner_id={owner_id}"
+    )
+
+
+def bootstrap() -> None:
+    REGISTRY_PATH.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+        mode=0o700,
+    )
+
+    registry_exists = (
+        REGISTRY_PATH.exists()
+    )
+    key_exists = (
+        CLIENT_KEY_PATH.exists()
+    )
+
+    if registry_exists or key_exists:
+        if not (
+            registry_exists
+            and key_exists
+        ):
+            raise RuntimeError(
+                "Auth secret state is incomplete; "
+                "registry and client key must both exist"
+            )
+
+        check()
+        print(
+            "AUTH SECRETS ALREADY EXIST"
+        )
+        return
+
+    api_key = secrets.token_urlsafe(
+        32
+    )
+
+    digest = hashlib.sha256(
+        api_key.encode("utf-8")
+    ).hexdigest()
+
+    registry = {
+        "version": 1,
+        "identities": [
+            {
+                "owner_id": DEFAULT_OWNER_ID,
+                "api_key_sha256": digest,
+            }
+        ],
+    }
+
+    created: list[Path] = []
+
+    try:
+        _write_exclusive(
+            REGISTRY_PATH,
+            json.dumps(
+                registry,
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n",
+        )
+        created.append(
+            REGISTRY_PATH
+        )
+
+        _write_exclusive(
+            CLIENT_KEY_PATH,
+            api_key + "\n",
+        )
+        created.append(
+            CLIENT_KEY_PATH
+        )
+    except Exception:
+        for path in created:
+            path.unlink(
+                missing_ok=True
+            )
+        raise
+
+    check()
+
+    print(
+        "AUTH SECRETS CREATED"
+    )
+    print(
+        f"registry={REGISTRY_PATH}"
+    )
+    print(
+        f"client_key_file={CLIENT_KEY_PATH}"
+    )
+
+
+def main() -> None:
+    if sys.argv[1:] == [
+        "--check"
+    ]:
+        check()
+        return
+
+    if sys.argv[1:]:
+        raise SystemExit(
+            "usage: bootstrap_auth.py [--check]"
+        )
+
+    bootstrap()
+
+
+if __name__ == "__main__":
+    main()

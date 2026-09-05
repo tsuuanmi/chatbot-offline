@@ -8,6 +8,9 @@ import urllib.request
 from uuid import uuid4
 
 
+from http_client import json_headers
+
+
 BASE_URL = "http://127.0.0.1:1416"
 
 
@@ -24,9 +27,7 @@ def chat(
                 "conversation_id": conversation_id,
             }
         ).encode("utf-8"),
-        headers={
-            "Content-Type": "application/json",
-        },
+        headers=json_headers(),
     )
 
     try:

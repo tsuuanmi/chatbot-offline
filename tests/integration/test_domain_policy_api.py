@@ -8,6 +8,9 @@ import urllib.request
 from pathlib import Path
 
 
+from tests.support import json_headers
+
+
 BASE_URL = "http://127.0.0.1:1416"
 
 
@@ -34,9 +37,7 @@ def main() -> None:
                     "query": case["query"],
                 }
             ).encode("utf-8"),
-            headers={
-                "Content-Type": "application/json",
-            },
+            headers=json_headers(),
         )
 
         with urllib.request.urlopen(

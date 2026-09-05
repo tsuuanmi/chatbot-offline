@@ -169,12 +169,26 @@ services:
     image: ${CHATBOT_IMAGE}
     pull_policy: never
 
+    command:
+      - python
+      - -m
+      - chatbot_app.server
+
     environment:
       HAYHOOKS_HOST: 0.0.0.0
       HAYHOOKS_PORT: "1416"
       HAYHOOKS_PIPELINES_DIR: /app/pipelines
       HAYHOOKS_SHOW_TRACEBACKS: "false"
       LOG: INFO
+
+      CHAT_AUTH_FILE: /run/secrets/chat_auth.json
+
+      HAYHOOKS_CORS_ALLOW_ORIGINS: '[]'
+      HAYHOOKS_CORS_ALLOW_METHODS: '["GET","POST","OPTIONS"]'
+      HAYHOOKS_CORS_ALLOW_HEADERS: '["Content-Type","Authorization"]'
+      HAYHOOKS_CORS_ALLOW_CREDENTIALS: "false"
+      HAYHOOKS_DASHBOARD_ENABLED: "false"
+      HAYHOOKS_CHAINLIT_ENABLED: "false"
 
       LLAMA_BASE_URL: http://llama-server:8080/v1
       LLAMA_API_KEY_FILE: /run/secrets/llama_api_key
@@ -191,7 +205,6 @@ services:
       EMBEDDING_THREADS: ${EMBEDDING_THREADS:-4}
       FASTEMBED_CACHE_PATH: /opt/models/fastembed
 
-      CHAT_OWNER_ID: ${CHAT_OWNER_ID:-local-development}
       HISTORY_TURN_LIMIT: ${HISTORY_TURN_LIMIT:-6}
       HISTORY_CHAR_LIMIT: ${HISTORY_CHAR_LIMIT:-8000}
       CHAT_MESSAGE_MAX_CHARS: ${CHAT_MESSAGE_MAX_CHARS:-8000}
@@ -199,6 +212,7 @@ services:
     volumes:
       - ./pipelines:/app/pipelines:ro,z
       - ./data/documents:/app/data/documents:ro,z
+      - ./runtime/secrets/chat_auth.json:/run/secrets/chat_auth.json:ro,z
       - ./runtime/secrets/llama_api_key:/run/secrets/llama_api_key:ro,z
       - ./runtime/secrets/postgres_password:/run/secrets/postgres_password:ro,z
 

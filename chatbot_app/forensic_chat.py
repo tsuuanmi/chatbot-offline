@@ -16,6 +16,9 @@ from haystack.components.generators.chat import (
 from haystack.dataclasses import ChatMessage
 from haystack.utils import Secret
 
+from chatbot_app.auth import (
+    current_identity,
+)
 from chatbot_app.citations import (
     citation_ids,
     citation_token,
@@ -126,16 +129,6 @@ class ForensicChatService:
 
         self.history = get_conversation_repository()
 
-        self.owner_id = os.environ.get(
-            "CHAT_OWNER_ID",
-            "local-development",
-        ).strip()
-
-        if not self.owner_id:
-            raise RuntimeError(
-                "CHAT_OWNER_ID must not be empty"
-            )
-
         self.history_turn_limit = bounded_env_int(
             "HISTORY_TURN_LIMIT",
             default=6,
@@ -231,18 +224,20 @@ class ForensicChatService:
             conversation_id
         )
 
+        owner_id = current_identity().owner_id
+
         async with self._conversation_locks.hold(
             parsed_id
         ):
             # Claim ownership before expensive work.
             await self.history.ensure_conversation(
                 parsed_id,
-                owner_id=self.owner_id,
+                owner_id=owner_id,
             )
 
             history = await self.history.get_turns(
                 parsed_id,
-                owner_id=self.owner_id,
+                owner_id=owner_id,
                 limit=self.history_turn_limit,
             )
 
@@ -265,7 +260,7 @@ class ForensicChatService:
 
             saved = await self.history.append_turn(
                 parsed_id,
-                owner_id=self.owner_id,
+                owner_id=owner_id,
                 query=query,
                 answer=str(
                     response["answer"]

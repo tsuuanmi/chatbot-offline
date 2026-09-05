@@ -7,6 +7,9 @@ import urllib.error
 import urllib.request
 
 
+from http_client import json_headers
+
+
 BASE_URL = "http://127.0.0.1:1416"
 
 
@@ -19,9 +22,7 @@ def post(
         data=json.dumps(
             payload
         ).encode("utf-8"),
-        headers={
-            "Content-Type": "application/json",
-        },
+        headers=json_headers(),
     )
 
     try:
