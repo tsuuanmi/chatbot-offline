@@ -192,7 +192,7 @@ check-python: check-env
 		python -c "from pathlib import Path; roots=[Path('/app/chatbot_app'),Path('/app/pipelines')]; files=sorted(p for root in roots for p in root.rglob('*.py')); [compile(p.read_text(encoding='utf-8'),str(p),'exec') for p in files]; print(f'PYTHON COMPILE OK ({len(files)} files)')"
 
 
-verify: config health test-unit check-tests test-policy smoke-m5c smoke-api-contract check-python
+verify: config health test-unit check-tests test-policy smoke-m5c smoke-api-contract smoke-stream check-python
 	@echo
 	@echo "VERIFY PASS"
 
@@ -364,3 +364,16 @@ auth-rotate: check-env
 	$(COMPOSE) up -d chatbot --pull never --wait; \
 	trap - EXIT HUP INT TERM; \
 	echo "AUTH ROTATION COMPLETE"
+
+
+.PHONY: smoke-stream
+
+smoke-stream: check-auth
+	@CHAT_CLIENT_API_KEY_FILE="$(CLIENT_API_KEY)" \
+		python3 -m tools.smoke_stream
+
+
+.PHONY: smoke-stream-history
+
+smoke-stream-history: check-auth
+	@CHAT_CLIENT_API_KEY_FILE="$(CLIENT_API_KEY)" 		python3 -m tools.smoke_stream_history

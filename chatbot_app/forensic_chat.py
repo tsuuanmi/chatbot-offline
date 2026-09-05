@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncGenerator, Awaitable, Callable
+from contextlib import suppress
 import os
 from dataclasses import replace
 from functools import lru_cache
@@ -10,6 +12,7 @@ from pathlib import Path
 from uuid import UUID
 
 from haystack import Pipeline
+from hayhooks import async_streaming_generator
 from haystack.components.generators.chat import (
     OpenAIChatGenerator,
 )
@@ -20,6 +23,7 @@ from chatbot_app.auth import (
     current_identity,
 )
 from chatbot_app.citations import (
+    CitationStreamFilter,
     citation_ids,
     citation_token,
     sanitize_citations,
@@ -201,6 +205,11 @@ class ForensicChatService:
         self,
         message: str,
         conversation_id: str | None = None,
+        *,
+        streaming_callback: (
+            Callable[[str], Awaitable[None]]
+            | None
+        ) = None,
     ) -> dict[str, object]:
         query = message.strip()
 
@@ -218,6 +227,7 @@ class ForensicChatService:
             return await self._answer_core(
                 query,
                 history=[],
+                streaming_callback=streaming_callback,
             )
 
         parsed_id = self._parse_conversation_id(
@@ -244,6 +254,7 @@ class ForensicChatService:
             response = await self._answer_core(
                 query,
                 history=history,
+                streaming_callback=streaming_callback,
             )
 
             decision = response.get(
@@ -288,11 +299,147 @@ class ForensicChatService:
 
         return persisted
 
+    async def stream_answer(
+        self,
+        message: str,
+        conversation_id: str | None = None,
+    ) -> AsyncGenerator[dict[str, object], None]:
+        queue: asyncio.Queue[
+            tuple[str, object]
+        ] = asyncio.Queue()
+
+        async def emit(
+            content: str,
+        ) -> None:
+            if content:
+                await queue.put(
+                    ("chunk", content)
+                )
+
+        async def run() -> None:
+            try:
+                result = await self.answer(
+                    message,
+                    conversation_id,
+                    streaming_callback=emit,
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:
+                await queue.put(
+                    ("error", error)
+                )
+            else:
+                await queue.put(
+                    ("done", result)
+                )
+
+        task = asyncio.create_task(
+            run()
+        )
+
+        emitted = False
+
+        try:
+            yield {
+                "type": "start",
+                "conversation_id": conversation_id,
+            }
+
+            while True:
+                kind, payload = await queue.get()
+
+                if kind == "chunk":
+                    emitted = True
+                    yield {
+                        "type": "chunk",
+                        "content": str(payload),
+                    }
+                    continue
+
+                if kind == "error":
+                    if isinstance(
+                        payload,
+                        BaseException,
+                    ):
+                        raise payload
+
+                    raise RuntimeError(
+                        "stream failed"
+                    )
+
+                if kind != "done":
+                    raise RuntimeError(
+                        "unknown stream event"
+                    )
+
+                if not isinstance(
+                    payload,
+                    dict,
+                ):
+                    raise RuntimeError(
+                        "invalid final stream result"
+                    )
+
+                result = payload
+
+                if (
+                    not emitted
+                    and result.get("answer")
+                ):
+                    yield {
+                        "type": "chunk",
+                        "content": str(
+                            result["answer"]
+                        ),
+                    }
+
+                end = {
+                    "type": "end",
+                    "source": result.get(
+                        "source"
+                    ),
+                    "decision": result.get(
+                        "decision"
+                    ),
+                    "evidence_status": result.get(
+                        "evidence_status"
+                    ),
+                    "citations": result.get(
+                        "citations",
+                        [],
+                    ),
+                }
+
+                for key in (
+                    "conversation_id",
+                    "turn",
+                    "history_turns_loaded",
+                ):
+                    if key in result:
+                        end[key] = result[key]
+
+                yield end
+                return
+
+        finally:
+            if not task.done():
+                task.cancel()
+
+                with suppress(
+                    asyncio.CancelledError
+                ):
+                    await task
+
     async def _answer_core(
         self,
         query: str,
         *,
         history: list,
+        streaming_callback: (
+            Callable[[str], Awaitable[None]]
+            | None
+        ) = None,
     ) -> dict[str, object]:
         scores = await asyncio.to_thread(
             self.classifier.classify,
@@ -358,6 +505,7 @@ class ForensicChatService:
                 query,
                 decision,
                 history=history,
+                streaming_callback=streaming_callback,
             )
 
         if prepared is not None:
@@ -395,6 +543,7 @@ class ForensicChatService:
             evidence,
             high_risk=False,
             history=history,
+            streaming_callback=streaming_callback,
         )
 
     @staticmethod
@@ -423,6 +572,10 @@ class ForensicChatService:
         decision: DomainDecision,
         *,
         history: list,
+        streaming_callback: (
+            Callable[[str], Awaitable[None]]
+            | None
+        ) = None,
     ) -> dict[str, object]:
         # Current corpus intentionally has no authoritative topic.
         if (
@@ -459,6 +612,7 @@ class ForensicChatService:
             evidence,
             high_risk=True,
             history=history,
+            streaming_callback=streaming_callback,
         )
 
     def _prepared_response(
@@ -506,6 +660,10 @@ class ForensicChatService:
         *,
         high_risk: bool,
         history: list,
+        streaming_callback: (
+            Callable[[str], Awaitable[None]]
+            | None
+        ) = None,
     ) -> dict[str, object]:
         system_parts = [
             BASE_SYSTEM_PROMPT,
@@ -566,27 +724,77 @@ class ForensicChatService:
             ChatMessage.from_user(query)
         )
 
-        result = await self.generation.run_async(
-            {
-                "llm": {
-                    "messages": messages,
-                }
-            }
-        )
-
-        answer = result[
-            "llm"
-        ]["replies"][0].text
-
         allowed = {
             item.citation_id
             for item in evidence
         }
 
-        answer = sanitize_citations(
-            answer,
-            allowed,
-        )
+        if streaming_callback is None:
+            result = await self.generation.run_async(
+                {
+                    "llm": {
+                        "messages": messages,
+                    }
+                }
+            )
+
+            answer = result[
+                "llm"
+            ]["replies"][0].text
+
+            answer = sanitize_citations(
+                answer,
+                allowed,
+            )
+
+        else:
+            citation_filter = CitationStreamFilter(
+                allowed
+            )
+
+            parts: list[str] = []
+
+            stream = async_streaming_generator(
+                pipeline=self.generation,
+                pipeline_run_args={
+                    "llm": {
+                        "messages": messages,
+                    }
+                },
+                streaming_components=[
+                    "llm"
+                ],
+            )
+
+            async for chunk in stream:
+                content = getattr(
+                    chunk,
+                    "content",
+                    "",
+                )
+
+                if not content:
+                    continue
+
+                safe = citation_filter.feed(
+                    content
+                )
+
+                if safe:
+                    parts.append(safe)
+                    await streaming_callback(
+                        safe
+                    )
+
+            tail = citation_filter.finish()
+
+            if tail:
+                parts.append(tail)
+                await streaming_callback(
+                    tail
+                )
+
+            answer = "".join(parts)
 
         used = citation_ids(answer)
 

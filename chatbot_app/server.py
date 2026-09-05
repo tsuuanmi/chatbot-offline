@@ -2,18 +2,36 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
+import logging
+from uuid import UUID
+
 from fastapi import Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from hayhooks import (
     create_app,
     run_app,
 )
 from hayhooks.settings import settings
+from pydantic import BaseModel
 
 from chatbot_app.auth import (
+    current_identity,
     get_auth_registry,
     identity_scope,
 )
+from chatbot_app.forensic_chat import (
+    get_forensic_chat,
+)
+
+
+logger = logging.getLogger(__name__)
+
+
+class StreamChatRequest(BaseModel):
+    message: str
+    conversation_id: UUID | None = None
 
 
 _PUBLIC_PATHS = {
@@ -157,6 +175,61 @@ def create_authenticated_app():
             return await call_next(
                 request
             )
+
+    @app.post(
+        "/chat/stream",
+        response_model=None,
+    )
+    async def stream_chat(
+        payload: StreamChatRequest,
+    ) -> StreamingResponse:
+        identity = current_identity()
+        chat = get_forensic_chat()
+
+        async def events():
+            try:
+                with identity_scope(identity):
+                    async for event in chat.stream_answer(
+                        payload.message,
+                        (
+                            str(payload.conversation_id)
+                            if payload.conversation_id
+                            is not None
+                            else None
+                        ),
+                    ):
+                        yield (
+                            "data: "
+                            + json.dumps(
+                                event,
+                                ensure_ascii=False,
+                                separators=(",", ":"),
+                            )
+                            + "\n\n"
+                        )
+
+            except asyncio.CancelledError:
+                raise
+
+            except Exception:
+                logger.exception(
+                    "Chat stream failed"
+                )
+
+                yield (
+                    'data: {"type":"error",'
+                    '"error":"An unexpected error occurred"}'
+                    "\n\n"
+                )
+
+        return StreamingResponse(
+            events(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+            },
+        )
 
     return app
 

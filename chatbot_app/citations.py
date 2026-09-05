@@ -56,3 +56,128 @@ def sanitize_citations(
         ),
         text,
     )
+
+
+class CitationStreamFilter:
+    """Validate explicit citation tokens while text is streamed."""
+
+    _MARKER = "[cite:"
+    _MAX_TOKEN_LENGTH = 135
+
+    def __init__(
+        self,
+        allowed: set[str],
+    ) -> None:
+        self.allowed = allowed
+        self._buffer = ""
+
+    def feed(
+        self,
+        text: str,
+    ) -> str:
+        if not text:
+            return ""
+
+        self._buffer += text
+        output: list[str] = []
+
+        while self._buffer:
+            start = self._buffer.find(
+                self._MARKER
+            )
+
+            if start < 0:
+                retain = self._partial_marker_suffix(
+                    self._buffer
+                )
+
+                if retain:
+                    output.append(
+                        self._buffer[:-retain]
+                    )
+                    self._buffer = (
+                        self._buffer[-retain:]
+                    )
+                else:
+                    output.append(
+                        self._buffer
+                    )
+                    self._buffer = ""
+
+                break
+
+            if start > 0:
+                output.append(
+                    self._buffer[:start]
+                )
+                self._buffer = (
+                    self._buffer[start:]
+                )
+
+            end = self._buffer.find("]")
+
+            if end < 0:
+                if (
+                    len(self._buffer)
+                    > self._MAX_TOKEN_LENGTH
+                ):
+                    output.append(
+                        self._buffer[0]
+                    )
+                    self._buffer = (
+                        self._buffer[1:]
+                    )
+                    continue
+
+                break
+
+            candidate = self._buffer[
+                : end + 1
+            ]
+
+            match = _CITATION_PATTERN.fullmatch(
+                candidate
+            )
+
+            if (
+                match is None
+                or match.group(1)
+                in self.allowed
+            ):
+                output.append(candidate)
+
+            self._buffer = self._buffer[
+                end + 1 :
+            ]
+
+        return "".join(output)
+
+    def finish(self) -> str:
+        tail = sanitize_citations(
+            self._buffer,
+            self.allowed,
+        )
+        self._buffer = ""
+        return tail
+
+    @classmethod
+    def _partial_marker_suffix(
+        cls,
+        value: str,
+    ) -> int:
+        maximum = min(
+            len(value),
+            len(cls._MARKER) - 1,
+        )
+
+        for size in range(
+            maximum,
+            0,
+            -1,
+        ):
+            if value.endswith(
+                cls._MARKER[:size]
+            ):
+                return size
+
+        return 0
