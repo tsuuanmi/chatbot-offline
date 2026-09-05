@@ -169,6 +169,9 @@ services:
     image: ${CHATBOT_IMAGE}
     pull_policy: never
 
+    group_add:
+      - "${CHATBOT_SECRET_GID}"
+
     command:
       - python
       - -m
@@ -231,7 +234,7 @@ services:
           "CMD",
           "python",
           "-c",
-          "import urllib.request; r=urllib.request.Request('http://127.0.0.1:1416/healthcheck/run', data=b'{}', headers={'Content-Type':'application/json'}); urllib.request.urlopen(r, timeout=5).read()"
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:1416/live', timeout=5).read()"
         ]
       interval: 10s
       timeout: 5s
@@ -240,8 +243,76 @@ services:
 
     restart: unless-stopped
 
+    read_only: true
+
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=128m
+
+    cap_drop:
+      - ALL
+
+    pids_limit: 256
+
+    init: true
+    stop_signal: SIGTERM
+    stop_grace_period: 30s
+
     security_opt:
       - no-new-privileges:true
+
+
+  proxy:
+    image: ${NGINX_IMAGE}
+    pull_policy: never
+
+    user: "101:101"
+
+    entrypoint:
+      - nginx
+
+    command:
+      - -g
+      - daemon off;
+
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro,z
+
+    ports:
+      - "${GATEWAY_BIND:-127.0.0.1}:${GATEWAY_PORT:-18080}:8080"
+
+    depends_on:
+      chatbot:
+        condition: service_healthy
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "-q",
+          "-O",
+          "/dev/null",
+          "http://127.0.0.1:8080/live"
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+    restart: unless-stopped
+    read_only: true
+
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+
+    cap_drop:
+      - ALL
+
+    security_opt:
+      - no-new-privileges:true
+
+    stop_signal: SIGQUIT
+    stop_grace_period: 15s
 
 
 volumes:

@@ -8,12 +8,15 @@ RUNTIME_ENV ?= .env
 APP_TAG ?= chatbot-offline/app:local
 AUTH_REGISTRY ?= runtime/secrets/chat_auth.json
 CLIENT_API_KEY ?= runtime/secrets/chat_api_key
+GATEWAY_PORT ?= 18080
+GATEWAY_URL ?= http://127.0.0.1:$(GATEWAY_PORT)
 
 COMPOSE = env \
 	-u CHATBOT_IMAGE \
 	-u HAYHOOKS_IMAGE \
 	-u LLAMA_CPU_IMAGE \
 	-u POSTGRES_IMAGE \
+	-u NGINX_IMAGE \
 	-u EMBEDDING_MODEL \
 	-u EMBEDDING_DIMENSION \
 	docker compose \
@@ -143,7 +146,7 @@ status:
 	@echo
 
 
-health: ps status ready
+health: ps status ready gateway-status gateway-ready
 
 
 logs: check-env
@@ -192,7 +195,7 @@ check-python: check-env
 		python -c "from pathlib import Path; roots=[Path('/app/chatbot_app'),Path('/app/pipelines')]; files=sorted(p for root in roots for p in root.rglob('*.py')); [compile(p.read_text(encoding='utf-8'),str(p),'exec') for p in files]; print(f'PYTHON COMPILE OK ({len(files)} files)')"
 
 
-verify: config health test-unit check-tests test-policy smoke-m5c smoke-api-contract smoke-stream check-python
+verify: config health test-unit check-tests test-policy smoke-m5c smoke-api-contract smoke-stream smoke-gateway check-python
 	@echo
 	@echo "VERIFY PASS"
 
@@ -233,12 +236,12 @@ logs-tail: check-env
 env-info:
 	@echo "=== shell overrides ==="
 	@env | grep -E \
-		'^(CHATBOT_IMAGE|HAYHOOKS_IMAGE|LLAMA_CPU_IMAGE|POSTGRES_IMAGE|EMBEDDING_MODEL|EMBEDDING_DIMENSION)=' \
+		'^(CHATBOT_IMAGE|HAYHOOKS_IMAGE|LLAMA_CPU_IMAGE|POSTGRES_IMAGE|NGINX_IMAGE|EMBEDDING_MODEL|EMBEDDING_DIMENSION)=' \
 		|| echo "(none)"
 	@echo
 	@echo "=== versions.env ==="
 	@grep -E \
-		'^(CHATBOT_IMAGE|HAYHOOKS_IMAGE|LLAMA_CPU_IMAGE|POSTGRES_IMAGE|EMBEDDING_MODEL|EMBEDDING_DIMENSION)=' \
+		'^(CHATBOT_IMAGE|HAYHOOKS_IMAGE|LLAMA_CPU_IMAGE|POSTGRES_IMAGE|NGINX_IMAGE|EMBEDDING_MODEL|EMBEDDING_DIMENSION)=' \
 		"$(VERSIONS_ENV)"
 
 
@@ -377,3 +380,48 @@ smoke-stream: check-auth
 
 smoke-stream-history: check-auth
 	@CHAT_CLIENT_API_KEY_FILE="$(CLIENT_API_KEY)" 		python3 -m tools.smoke_stream_history
+
+
+.PHONY: gateway-status gateway-ready smoke-gateway
+
+gateway-status:
+	@curl -fsS $(GATEWAY_URL)/live
+	@echo
+
+
+gateway-ready:
+	@curl -fsS \
+		-X POST \
+		$(GATEWAY_URL)/healthcheck/run \
+		-H 'Content-Type: application/json' \
+		-d '{}'
+	@echo
+
+
+smoke-gateway: check-auth
+	@CHAT_CLIENT_API_KEY_FILE="$(CLIENT_API_KEY)" \
+		CHAT_GATEWAY_BASE_URL="$(GATEWAY_URL)" \
+		python3 -m tools.smoke_gateway
+
+
+.PHONY: smoke-gateway-stream smoke-production audit-secrets m7-accept
+
+smoke-gateway-stream: check-auth
+	@CHAT_CLIENT_API_KEY_FILE="$(CLIENT_API_KEY)" \
+		CHAT_BASE_URL="$(GATEWAY_URL)" \
+		python3 -m tools.smoke_stream
+
+
+smoke-production: check-auth
+	@CHAT_CLIENT_API_KEY_FILE="$(CLIENT_API_KEY)" \
+		CHAT_GATEWAY_BASE_URL="$(GATEWAY_URL)" \
+		python3 -m tools.smoke_production
+
+
+audit-secrets:
+	@python3 -m tools.audit_runtime_secrets
+
+
+m7-accept: verify smoke-gateway-stream smoke-production audit-secrets
+	@echo
+	@echo "M7 ACCEPTANCE PASS"

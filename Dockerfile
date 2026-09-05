@@ -39,10 +39,24 @@ if actual != expected:
 print(f"Embedding model ready: dimension={actual}")
 PY
 
-COPY chatbot_app /app/chatbot_app
-COPY data/policies /app/data/policies
-COPY tools /app/tools
+RUN groupadd --gid 10001 chatbot \
+    && useradd \
+        --uid 10001 \
+        --gid 10001 \
+        --create-home \
+        --home-dir /home/chatbot \
+        --shell /usr/sbin/nologin \
+        chatbot \
+    && chown -R 10001:10001 /opt/models/fastembed
+
+COPY --chown=10001:10001 chatbot_app /app/chatbot_app
+COPY --chown=10001:10001 data/policies /app/data/policies
+COPY --chown=10001:10001 tools /app/tools
 
 ENV PYTHONPATH=/app \
     HF_HUB_OFFLINE=1 \
-    TRANSFORMERS_OFFLINE=1
+    TRANSFORMERS_OFFLINE=1 \
+    HOME=/tmp \
+    XDG_CACHE_HOME=/tmp/.cache
+
+USER 10001:10001

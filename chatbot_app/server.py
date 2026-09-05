@@ -35,6 +35,7 @@ class StreamChatRequest(BaseModel):
 
 
 _PUBLIC_PATHS = {
+    "/live",
     "/status",
     "/healthcheck/run",
 }
@@ -114,6 +115,12 @@ def _unauthorized() -> JSONResponse:
 def create_authenticated_app():
     registry = get_auth_registry()
     app = create_app()
+
+    @app.get("/live")
+    async def live() -> dict[str, str]:
+        return {
+            "status": "ok",
+        }
 
     @app.middleware("http")
     async def authentication_middleware(

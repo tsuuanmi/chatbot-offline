@@ -3,12 +3,18 @@
 from __future__ import annotations
 
 import json
+import os
 import urllib.request
 
 from tools.http_client import json_headers
 
 
-URL = "http://127.0.0.1:1416/chat/stream"
+BASE_URL = os.environ.get(
+    "CHAT_BASE_URL",
+    "http://127.0.0.1:1416",
+).rstrip("/")
+
+URL = f"{BASE_URL}/chat/stream"
 
 
 request = urllib.request.Request(

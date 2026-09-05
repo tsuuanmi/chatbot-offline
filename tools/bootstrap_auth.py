@@ -84,10 +84,16 @@ def _require_private_file(
         path.stat().st_mode
     )
 
-    if mode & 0o077:
+    if mode not in {
+        0o400,
+        0o440,
+        0o600,
+        0o640,
+    }:
         raise RuntimeError(
-            f"{label} permissions are too broad: "
-            f"{mode:04o}; expected 0600 or stricter"
+            f"{label} permissions are invalid: "
+            f"{mode:04o}; expected private "
+            "0400/0440/0600/0640"
         )
 
 

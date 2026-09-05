@@ -41,7 +41,7 @@ Key principles:
 - no startup DDL
 - secrets through mounted files
 - SELinux stays Enforcing
-- loopback-only HTTP until M7
+- Nginx is the only configurable LAN-facing HTTP gateway from M7 onward
 
 ---
 
@@ -135,11 +135,11 @@ make offline-restart
 
 ### M6B — Authentication and Ownership
 
-Status: IN PROGRESS
+Status: COMPLETE
 
 #### M6B.1 — Authentication Primitive
 
-Current work.
+Status: COMPLETE
 
 Requirements:
 
@@ -157,7 +157,7 @@ Requirements:
 
 #### M6B.2 — Authenticated Ownership
 
-Pending.
+Status: COMPLETE
 
 Requirements:
 
@@ -169,7 +169,7 @@ Requirements:
 
 #### M6B.3 — Auth Hardening
 
-Pending.
+Status: COMPLETE
 
 Requirements:
 
@@ -183,7 +183,7 @@ Requirements:
 
 ### M6C — Streaming API
 
-Status: PENDING
+Status: COMPLETE
 
 Goals:
 
@@ -197,7 +197,8 @@ Goals:
 
 ## M7 — Nginx and Production Hardening
 
-Status: PENDING
+Status: COMPLETE
+
 
 Goals:
 
@@ -220,7 +221,7 @@ No external exposure before M7 is complete.
 
 ## M8 — Fully Offline Distribution
 
-Status: PENDING
+Status: NEXT
 
 Goals:
 

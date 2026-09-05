@@ -56,7 +56,7 @@ Core architectural requirements:
 * Versioned database migrations only; application startup must not perform DDL.
 * Secrets must be supplied through mounted secret files and must never be committed or logged.
 * RHEL deployments must support SELinux Enforcing.
-* The chatbot HTTP service remains bound to loopback until external hardening is complete.
+* Nginx is the configurable LAN-facing gateway; direct chatbot host access remains loopback-only for local maintenance and testing.
 * Conversation history is context only and must never be treated as authoritative evidence.
 * High-risk policy always takes precedence over prepared answers and generation.
 * Conversation ownership must come from authenticated identity, never from a client-supplied owner ID.
@@ -72,10 +72,10 @@ Core architectural requirements:
 * M6A — Conversation persistence and bounded conversational context: COMPLETE
 * M6B.1 — Offline API authentication: COMPLETE
 * M6B.2 — Authenticated conversation ownership: COMPLETE
-* M6B.3 — Authentication hardening: NEXT
-* M6C — Streaming API: PENDING
-* M7 — Nginx and production hardening: PENDING
-* M8 — Fully offline distribution for Ubuntu and RHEL: PENDING
+* M6B.3 — Authentication hardening: COMPLETE
+* M6C — Streaming API: COMPLETE
+* M7 — Nginx and production hardening: COMPLETE
+* M8 — Fully offline distribution for Ubuntu and RHEL: NEXT
 * M9 — Optional GPU acceleration: PENDING
 * M10 — Final cleanup and release acceptance: PENDING
 
@@ -138,7 +138,7 @@ make image-info
 7. Authentication credentials must not be pipeline request parameters.
 8. Conversation owner identity must be derived from authentication.
 9. Runtime pipeline deployment and undeployment must not be exposed in production.
-10. External network exposure is not allowed until M7 production hardening is complete.
+10. External HTTP access must enter through Nginx; direct chatbot host access remains loopback-only.
 
 ### Deliberately Excluded From Core
 
