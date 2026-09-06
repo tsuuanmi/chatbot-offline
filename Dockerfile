@@ -53,6 +53,7 @@ COPY --chown=10001:10001 chatbot_app /app/chatbot_app
 COPY --chown=10001:10001 data/policies /app/data/policies
 COPY --chown=10001:10001 tools/__init__.py /app/tools/__init__.py
 COPY --chown=10001:10001 tools/index_knowledge.py /app/tools/index_knowledge.py
+COPY --chown=10001:10001 tools/index_figures.py /app/tools/index_figures.py
 
 ENV PYTHONPATH=/app \
     HF_HUB_OFFLINE=1 \

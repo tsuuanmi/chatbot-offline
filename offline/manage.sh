@@ -109,6 +109,19 @@ case "${1:-}" in
             "OFFLINE REINDEX PASS"
         ;;
 
+
+    reindex-figures)
+        offline_compose \
+            --profile tools \
+            run \
+            --rm \
+            --no-deps \
+            index-figures
+
+        echo \
+            "OFFLINE FIGURE REINDEX PASS"
+        ;;
+
     verify)
         offline_verify
         ;;
@@ -149,6 +162,7 @@ commands:
   status
   logs [service]
   reindex
+  reindex-figures
   verify
   accept
   gpu enable

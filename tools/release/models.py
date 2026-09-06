@@ -130,6 +130,7 @@ def build(
         runtime,
         "MODEL_BUNDLE_VERSION",
         "LLAMA_MODEL_NAME",
+        "MMPROJ_MODEL",
         "MTP_MODEL_NAME",
         "LLAMA_SPEC_TYPE",
         "LLAMA_SPEC_DRAFT_N_MAX",
@@ -154,6 +155,10 @@ def build(
         "LLAMA_MODEL_NAME"
     ]
 
+    mmproj_name = runtime[
+        "MMPROJ_MODEL"
+    ]
+
     mtp_name = runtime[
         "MTP_MODEL_NAME"
     ]
@@ -163,6 +168,11 @@ def build(
         / llama_name
     )
 
+    mmproj_source = (
+        model_dir
+        / mmproj_name
+    )
+
     mtp_source = (
         model_dir
         / mtp_name
@@ -170,6 +180,7 @@ def build(
 
     for label, path in (
         ("llama model", llama_source),
+        ("multimodal projector", mmproj_source),
         ("MTP model", mtp_source),
     ):
         if not path.is_file():
@@ -215,6 +226,11 @@ def build(
             / llama_name
         )
 
+        mmproj_target = (
+            models
+            / mmproj_name
+        )
+
         mtp_target = (
             models
             / mtp_name
@@ -226,12 +242,21 @@ def build(
         )
 
         shutil.copy2(
+            mmproj_source,
+            mmproj_target,
+        )
+
+        shutil.copy2(
             mtp_source,
             mtp_target,
         )
 
         llama_sha256 = digest(
             llama_target
+        )
+
+        mmproj_sha256 = digest(
+            mmproj_target
         )
 
         mtp_sha256 = digest(
@@ -244,6 +269,8 @@ def build(
                 "model_bundle_version": version,
                 "llama_model": llama_name,
                 "llama_model_sha256": llama_sha256,
+                "mmproj_model": mmproj_name,
+                "mmproj_model_sha256": mmproj_sha256,
                 "mtp_model": mtp_name,
                 "mtp_model_sha256": mtp_sha256,
                 "llama_spec_type": runtime[
@@ -380,6 +407,8 @@ def verify(
             "model_bundle_version",
             "llama_model",
             "llama_model_sha256",
+            "mmproj_model",
+            "mmproj_model_sha256",
             "mtp_model",
             "mtp_model_sha256",
             "llama_spec_type",
@@ -462,6 +491,10 @@ def verify(
             (
                 "llama_model",
                 "llama_model_sha256",
+            ),
+            (
+                "mmproj_model",
+                "mmproj_model_sha256",
             ),
             (
                 "mtp_model",

@@ -329,6 +329,11 @@ def build(
             root / "data/documents",
         )
 
+        _copy_tree(
+            Path("data/figures"),
+            root / "data/figures",
+        )
+
         images = (
             root
             / "images"

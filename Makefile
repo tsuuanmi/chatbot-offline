@@ -47,6 +47,7 @@ TOOLS = $(COMPOSE) --profile tools
 	logs \
 	migrate \
 	reindex \
+	reindex-figures \
 	gpu \
 	cpu \
 	auth-init \
@@ -78,6 +79,7 @@ help:
 		'Data:' \
 		'  make migrate           Apply database migrations' \
 		'  make reindex           Rebuild knowledge index' \
+		'  make reindex-figures   Update configured figure cache live' \
 		'' \
 		'Auth:' \
 		'  make auth-init' \
@@ -184,6 +186,13 @@ reindex: check-env
 		--wait
 	@echo "REINDEX PASS"
 
+
+reindex-figures: check-env
+	@$(TOOLS) run \
+		--rm \
+		--no-deps \
+		index-figures
+	@echo "FIGURE REINDEX PASS"
 
 gpu: check-env auth-check
 	@LLAMA_GPU_LAYERS="$(LLAMA_GPU_LAYERS)" \

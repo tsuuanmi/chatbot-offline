@@ -9,6 +9,7 @@ SHELL := /bin/bash
 	status \
 	logs \
 	reindex \
+	reindex-figures \
 	verify \
 	accept \
 	gpu \
@@ -39,6 +40,9 @@ logs:
 
 reindex:
 	@./offline/manage.sh reindex
+
+reindex-figures:
+	@./offline/manage.sh reindex-figures
 
 verify:
 	@./offline/manage.sh verify

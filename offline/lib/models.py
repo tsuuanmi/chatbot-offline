@@ -121,6 +121,10 @@ def runtime_expectation(
             "llama_model",
             "",
         ),
+        "mmproj_model": manifest.get(
+            "mmproj_model",
+            "",
+        ),
         "mtp_model": manifest.get(
             "mtp_model",
             "",
@@ -167,6 +171,7 @@ def validate_manifest(
 
     for key in (
         "llama_model_sha256",
+        "mmproj_model_sha256",
         "mtp_model_sha256",
     ):
         if not manifest.get(key):
@@ -225,6 +230,10 @@ def verify_installed(
         (
             "llama_model",
             "llama_model_sha256",
+        ),
+        (
+            "mmproj_model",
+            "mmproj_model_sha256",
         ),
         (
             "mtp_model",
@@ -409,6 +418,10 @@ def verify_archive(
             (
                 "llama_model",
                 "llama_model_sha256",
+            ),
+            (
+                "mmproj_model",
+                "mmproj_model_sha256",
             ),
             (
                 "mtp_model",

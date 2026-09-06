@@ -528,6 +528,15 @@ offline_runtime_compose \
     --wait
 
 log \
+    "Updating configured figure cache"
+
+offline_compose \
+    --profile tools \
+    run \
+    --rm \
+    --no-deps \
+    index-figures
+log \
     "Starting chatbot and Nginx"
 
 offline_runtime_compose \

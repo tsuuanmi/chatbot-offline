@@ -119,6 +119,58 @@ services:
       - no-new-privileges:true
 
 
+  index-figures:
+    profiles:
+      - tools
+
+    image: ${CHATBOT_IMAGE}
+    pull_policy: never
+
+    group_add:
+      - "${CHATBOT_SECRET_GID}"
+
+    entrypoint:
+      - python
+      - /app/tools/index_figures.py
+
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+
+      LLAMA_BASE_URL: http://llama-server:8080/v1
+      LLAMA_API_KEY_FILE: /run/secrets/llama_api_key
+      LLAMA_MODEL_ALIAS: ${LLAMA_MODEL_ALIAS}
+
+      FIGURE_DIR: /data/figures
+      FIGURE_DESCRIPTION_VERSION: ${FIGURE_DESCRIPTION_VERSION:-1}
+
+    volumes:
+      - ./data/figures:/data/figures:ro,z
+      - ${CHATBOT_RUNTIME_DIR:-./runtime}/secrets/llama_api_key:/run/secrets/llama_api_key:ro,z
+      - ${CHATBOT_RUNTIME_DIR:-./runtime}/secrets/postgres_password:/run/secrets/postgres_password:ro,z
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+      llama-server:
+        condition: service_healthy
+
+    restart: "no"
+    read_only: true
+
+    tmpfs:
+      - /tmp
+
+    cap_drop:
+      - ALL
+
+    security_opt:
+      - no-new-privileges:true
+
+
   llama-server:
     container_name: chatbot-llama
     image: ${LLAMA_CPU_IMAGE}
@@ -132,6 +184,8 @@ services:
       - /models/${LLAMA_MODEL_NAME}
       - --alias
       - ${LLAMA_MODEL_ALIAS}
+      - --mmproj
+      - /models/${MMPROJ_MODEL}
       - --spec-draft-model
       - /models/${MTP_MODEL_NAME}
       - --spec-type
