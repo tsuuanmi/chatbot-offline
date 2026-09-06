@@ -329,6 +329,14 @@ case "$INSTALL_ACCELERATOR" in
         ;;
 esac
 
+
+if [[ "$INSTALL_ACCELERATOR" == "gpu" ]]; then
+    log "Checking host GPU memory headroom"
+
+    offline_gpu_preflight_host_memory ||
+        die             "Insufficient free GPU memory; stop substantial GPU processes and retry"
+fi
+
 SECRET_GID="$DEPLOY_GID"
 
 INSTALL_GATEWAY_BIND="${GATEWAY_BIND:-0.0.0.0}"
