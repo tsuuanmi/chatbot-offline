@@ -1,0 +1,50 @@
+SHELL := /bin/bash
+.SHELLFLAGS := -eu -o pipefail -c
+
+.PHONY: \
+	install \
+	start \
+	stop \
+	restart \
+	status \
+	logs \
+	reindex \
+	verify \
+	accept \
+	gpu \
+	cpu
+
+install:
+	@CHATBOT_ACCELERATOR="$(or $(ACCELERATOR),auto)" \
+		CHATBOT_HOST_IP="$(HOST_IP)" \
+		./offline/install.sh
+
+start:
+	@./offline/manage.sh start
+
+stop:
+	@./offline/manage.sh stop
+
+restart:
+	@./offline/manage.sh restart
+
+status:
+	@./offline/manage.sh status
+
+logs:
+	@./offline/manage.sh logs $(SERVICE)
+
+reindex:
+	@./offline/manage.sh reindex
+
+verify:
+	@./offline/manage.sh verify
+
+accept:
+	@./offline/manage.sh accept
+
+gpu:
+	@./offline/manage.sh gpu enable
+
+cpu:
+	@./offline/manage.sh gpu disable

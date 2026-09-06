@@ -58,6 +58,8 @@ TOOLS = $(COMPOSE) --profile tools
 	recovery \
 	bundle \
 	bundle-gpu \
+	release \
+	release-models \
 	clean
 
 
@@ -92,7 +94,9 @@ help:
 		'' \
 		'Release:' \
 		'  make bundle [BUNDLE_VERSION=x]' \
-		'  make bundle-gpu [BUNDLE_VERSION=x]'
+		'  make bundle-gpu [BUNDLE_VERSION=x]' \
+		'  make release [RELEASE_VERSION=x]' \
+		'  make release-models [MODEL_VERSION=x]'
 
 
 check-env:
@@ -301,6 +305,16 @@ bundle: check-env
 bundle-gpu: check-env
 	@python3 -m tools.release build gpu \
 		$(if $(BUNDLE_VERSION),--version "$(BUNDLE_VERSION)",)
+
+
+release: check-env
+	@python3 -m tools.release build runtime \
+		$(if $(RELEASE_VERSION),--version "$(RELEASE_VERSION)",)
+
+
+release-models: check-env
+	@python3 -m tools.release build models \
+		$(if $(MODEL_VERSION),--version "$(MODEL_VERSION)",)
 
 
 clean:

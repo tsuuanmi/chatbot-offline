@@ -7,6 +7,14 @@ from pathlib import Path
 
 from .bundle import build as build_cpu
 from .gpu import build as build_gpu
+from .models import (
+    build as build_models,
+    verify as verify_models,
+)
+from .runtime import (
+    build as build_runtime,
+    verify as verify_runtime,
+)
 from .verify import (
     verify_cpu,
     verify_gpu,
@@ -24,10 +32,8 @@ def main() -> None:
         required=True,
     )
 
-    build_parser = (
-        commands.add_parser(
-            "build"
-        )
+    build_parser = commands.add_parser(
+        "build"
     )
 
     build_parser.add_argument(
@@ -35,6 +41,8 @@ def main() -> None:
         choices=(
             "cpu",
             "gpu",
+            "models",
+            "runtime",
         ),
     )
 
@@ -48,10 +56,8 @@ def main() -> None:
         default=Path("dist"),
     )
 
-    verify_parser = (
-        commands.add_parser(
-            "verify"
-        )
+    verify_parser = commands.add_parser(
+        "verify"
     )
 
     verify_parser.add_argument(
@@ -60,6 +66,8 @@ def main() -> None:
             "cpu",
             "gpu",
             "pair",
+            "models",
+            "runtime",
         ),
     )
 
@@ -72,47 +80,71 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.command == "build":
-        if args.kind == "cpu":
-            build_cpu(
-                args.version,
-                args.dist,
+        builders = {
+            "cpu": build_cpu,
+            "gpu": build_gpu,
+            "models": build_models,
+            "runtime": build_runtime,
+        }
+
+        builders[args.kind](
+            args.version,
+            args.dist,
+        )
+
+        return
+
+    if args.kind == "runtime":
+        if len(args.paths) != 1:
+            parser.error(
+                "verify runtime requires exactly one path"
             )
-        else:
-            build_gpu(
-                args.version,
-                args.dist,
+
+        verify_runtime(
+            args.paths[0]
+        )
+
+        return
+
+    if args.kind == "models":
+        if len(args.paths) != 1:
+            parser.error(
+                "verify models requires exactly one path"
             )
+
+        verify_models(
+            args.paths[0]
+        )
 
         return
 
     if args.kind == "cpu":
         if len(args.paths) != 1:
             parser.error(
-                "verify cpu requires "
-                "exactly one path"
+                "verify cpu requires exactly one path"
             )
 
         verify_cpu(
             args.paths[0]
         )
+
         return
 
     if args.kind == "gpu":
         if len(args.paths) != 1:
             parser.error(
-                "verify gpu requires "
-                "exactly one path"
+                "verify gpu requires exactly one path"
             )
 
         verify_gpu(
             args.paths[0]
         )
+
         return
 
     if len(args.paths) != 2:
         parser.error(
-            "verify pair requires "
-            "CPU_BUNDLE GPU_ADDON"
+            "verify pair requires CPU_BUNDLE GPU_ADDON"
         )
 
     verify_pair(
