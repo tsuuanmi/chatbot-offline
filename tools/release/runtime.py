@@ -156,6 +156,7 @@ def build(
         runtime,
         "MODEL_BUNDLE_VERSION",
         "LLAMA_MODEL_NAME",
+        "MMPROJ_MODEL",
         "MTP_MODEL_NAME",
         "LLAMA_SPEC_TYPE",
         "LLAMA_SPEC_DRAFT_N_MAX",
@@ -390,6 +391,9 @@ def build(
                 "llama_model": runtime[
                     "LLAMA_MODEL_NAME"
                 ],
+                "mmproj_model": runtime[
+                    "MMPROJ_MODEL"
+                ],
                 "mtp_model": runtime[
                     "MTP_MODEL_NAME"
                 ],
@@ -603,17 +607,53 @@ def verify(
                 "release source is not clean"
             )
 
-        required_model_bundle = (
-            manifest.get(
+        model_requirements = {
+            "required_model_bundle": manifest.get(
                 "required_model_bundle",
                 "",
-            )
-        )
+            ),
+            "llama_model": manifest.get(
+                "llama_model",
+                "",
+            ),
+            "mmproj_model": manifest.get(
+                "mmproj_model",
+                "",
+            ),
+            "mtp_model": manifest.get(
+                "mtp_model",
+                "",
+            ),
+            "llama_spec_type": manifest.get(
+                "llama_spec_type",
+                "",
+            ),
+            "llama_spec_draft_n_max": manifest.get(
+                "llama_spec_draft_n_max",
+                "",
+            ),
+        }
 
-        if not required_model_bundle:
+        missing_model_requirements = [
+            key
+            for key, value
+            in model_requirements.items()
+            if not value
+        ]
+
+        if missing_model_requirements:
             raise RuntimeError(
-                "required model bundle missing"
+                "release model requirements missing: "
+                + ", ".join(
+                    missing_model_requirements
+                )
             )
+
+        required_model_bundle = (
+            model_requirements[
+                "required_model_bundle"
+            ]
+        )
 
         version = manifest.get(
             "bundle_version",
