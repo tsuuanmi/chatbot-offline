@@ -213,7 +213,9 @@ gpu: check-env auth-check
 			-d \
 			--pull never \
 			--wait
-	@CHAT_CLIENT_API_KEY_FILE="$(CLIENT_API_KEY)" \
+	@CHAT_AUTH_REGISTRY_PATH="$(AUTH_REGISTRY)" \
+		CHAT_CLIENT_API_KEY_FILE="$(CLIENT_API_KEY)" \
+		CHAT_GATEWAY_BASE_URL="$(GATEWAY_URL)" \
 		python3 -m tools.accept full --gpu
 
 
