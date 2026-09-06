@@ -25,6 +25,11 @@ from .gpu import (
     gpu_runtime_check,
 )
 
+from .media import (
+    media_full_suite,
+    media_quick_suite,
+)
+
 from .history import (
     context_suite,
     history_concurrency_suite,
@@ -60,6 +65,7 @@ def verify() -> None:
     )
 
     gateway_suite()
+    media_quick_suite()
     runtime_python_compile()
 
     print()
@@ -88,6 +94,8 @@ def full(
         GATEWAY_URL,
         label="gateway",
     )
+
+    media_full_suite()
 
     secret_audit()
     secret_group_check()

@@ -127,6 +127,8 @@ def chat_result(
     message: str,
     *,
     conversation_id: str | None = None,
+    figure_id: str | None = None,
+    image: str | None = None,
     base_url: str = INTERNAL_URL,
 ) -> dict[str, object]:
     payload: dict[str, object] = {
@@ -137,6 +139,16 @@ def chat_result(
         payload[
             "conversation_id"
         ] = conversation_id
+
+    if figure_id is not None:
+        payload[
+            "figure_id"
+        ] = figure_id
+
+    if image is not None:
+        payload[
+            "image"
+        ] = image
 
     status, _, raw = request(
         base_url,
@@ -176,6 +188,8 @@ def stream_events(
     message: str,
     *,
     conversation_id: str | None = None,
+    figure_id: str | None = None,
+    image: str | None = None,
     base_url: str = INTERNAL_URL,
 ) -> list[dict[str, object]]:
     payload: dict[str, object] = {
@@ -186,6 +200,16 @@ def stream_events(
         payload[
             "conversation_id"
         ] = conversation_id
+
+    if figure_id is not None:
+        payload[
+            "figure_id"
+        ] = figure_id
+
+    if image is not None:
+        payload[
+            "image"
+        ] = image
 
     req = urllib.request.Request(
         base_url.rstrip("/")
