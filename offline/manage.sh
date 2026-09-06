@@ -9,20 +9,15 @@ OFFLINE_ROOT="$(
 
 export OFFLINE_ROOT
 
-# shellcheck disable=SC1091
 source "$OFFLINE_ROOT/offline/lib/common.sh"
-
-# shellcheck disable=SC1091
 source "$OFFLINE_ROOT/offline/lib/gpu.sh"
-
-# shellcheck disable=SC1091
 source "$OFFLINE_ROOT/offline/lib/accept.sh"
 
 offline_require_installation
 
 case "${1:-}" in
     start)
-        offline_compose \
+        offline_runtime_compose \
             up \
             -d \
             --pull never \
@@ -33,16 +28,16 @@ case "${1:-}" in
         ;;
 
     stop)
-        offline_compose down
+        offline_runtime_compose down
 
         echo \
             "OFFLINE STOP PASS"
         ;;
 
     restart)
-        offline_compose down
+        offline_runtime_compose down
 
-        offline_compose \
+        offline_runtime_compose \
             up \
             -d \
             --pull never \
@@ -53,11 +48,11 @@ case "${1:-}" in
         ;;
 
     status)
-        offline_compose ps
+        offline_runtime_compose ps
         ;;
 
     logs)
-        offline_compose logs \
+        offline_runtime_compose logs \
             --tail="${TAIL:-200}" \
             -f \
             "${2:-chatbot}"
@@ -67,11 +62,11 @@ case "${1:-}" in
         echo \
             "Stopping client-facing services..."
 
-        offline_compose \
+        offline_runtime_compose \
             stop proxy chatbot
 
         restore_services() {
-            offline_compose \
+            offline_runtime_compose \
                 up \
                 -d \
                 chatbot \
@@ -99,7 +94,7 @@ case "${1:-}" in
             --rm \
             index-knowledge
 
-        offline_compose \
+        offline_runtime_compose \
             up \
             -d \
             chatbot \
@@ -125,8 +120,7 @@ case "${1:-}" in
     gpu)
         case "${2:-}" in
             enable)
-                offline_gpu_enable \
-                    "${3:-}"
+                offline_gpu_enable
                 ;;
 
             disable)
@@ -139,13 +133,13 @@ case "${1:-}" in
 
             *)
                 offline_die \
-                    "usage: $0 gpu {enable ADDON_DIR|disable|status}"
+                    "usage: $0 gpu {enable|disable|status}"
                 ;;
         esac
         ;;
 
     *)
-        cat >&2 <<EOF
+        cat >&2 <<EOF_USAGE
 usage: $0 COMMAND
 
 commands:
@@ -157,10 +151,10 @@ commands:
   reindex
   verify
   accept
-  gpu enable ADDON_DIR
+  gpu enable
   gpu disable
   gpu status
-EOF
+EOF_USAGE
         exit 2
         ;;
 esac

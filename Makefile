@@ -5,7 +5,7 @@ SHELL := /bin/bash
 
 VERSIONS_ENV ?= versions.env
 RUNTIME_ENV ?= .env
-APP_TAG ?= chatbot-offline/app:local
+APP_TAG ?= chatbot-app:local
 
 AUTH_REGISTRY ?= runtime/secrets/chat_auth.json
 CLIENT_API_KEY ?= runtime/secrets/chat_api_key
@@ -56,8 +56,6 @@ TOOLS = $(COMPOSE) --profile tools
 	verify \
 	accept \
 	recovery \
-	bundle \
-	bundle-gpu \
 	release \
 	release-models \
 	clean
@@ -93,8 +91,6 @@ help:
 		'  make recovery          Persistent-state recovery test' \
 		'' \
 		'Release:' \
-		'  make bundle [BUNDLE_VERSION=x]' \
-		'  make bundle-gpu [BUNDLE_VERSION=x]' \
 		'  make release [RELEASE_VERSION=x]' \
 		'  make release-models [MODEL_VERSION=x]'
 
@@ -297,16 +293,6 @@ recovery: check-env auth-check
 		python3 -m tools.accept recovery
 
 
-bundle: check-env
-	@python3 -m tools.release build cpu \
-		$(if $(BUNDLE_VERSION),--version "$(BUNDLE_VERSION)",)
-
-
-bundle-gpu: check-env
-	@python3 -m tools.release build gpu \
-		$(if $(BUNDLE_VERSION),--version "$(BUNDLE_VERSION)",)
-
-
 release: check-env
 	@python3 -m tools.release build runtime \
 		$(if $(RELEASE_VERSION),--version "$(RELEASE_VERSION)",)
@@ -318,4 +304,4 @@ release-models: check-env
 
 
 clean:
-	@rm -f /tmp/chatbot-offline-*.json
+	@rm -f /tmp/chatbot-*.json

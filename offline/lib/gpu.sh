@@ -1,51 +1,43 @@
 #!/usr/bin/env bash
 
-offline_gpu_compatibility() {
-    local addon_dir="$1"
+offline_gpu_image() {
+    offline_manifest_value \
+        "$OFFLINE_ROOT/versions.gpu.env" \
+        LLAMA_GPU_IMAGE
+}
 
-    [[ -f "$OFFLINE_ROOT/BUNDLE-MANIFEST.txt" ]] ||
-        offline_die \
-            "Base bundle manifest is missing"
+offline_gpu_available() {
+    local gpu_image
 
-    [[ -f "$addon_dir/GPU-MANIFEST.txt" ]] ||
-        offline_die \
-            "GPU add-on manifest is missing"
+    gpu_image="$(
+        offline_gpu_image
+    )"
 
-    local key
-    local base_value
-    local addon_value
+    [[ -n "$gpu_image" ]] ||
+        return 1
 
-    for key in \
-        source_git_sha \
-        architecture \
-        bundle_version
-    do
-        base_value="$(
-            offline_manifest_value \
-                "$OFFLINE_ROOT/BUNDLE-MANIFEST.txt" \
-                "$key"
-        )"
+    [[ -f "$OFFLINE_ROOT/images/llama-gpu.tar" ]] ||
+        return 1
 
-        addon_value="$(
-            offline_manifest_value \
-                "$addon_dir/GPU-MANIFEST.txt" \
-                "$key"
-        )"
+    docker image inspect \
+        "$gpu_image" \
+        >/dev/null 2>&1 ||
+        return 1
 
-        [[ "$base_value" == "$addon_value" ]] ||
-            offline_die \
-                "GPU add-on mismatch: $key"
-    done
+    docker run \
+        --rm \
+        --gpus all \
+        "$gpu_image" \
+        --list-devices \
+        2>/dev/null \
+    | grep -q 'CUDA0:'
 }
 
 offline_gpu_runtime() {
-    local addon_dir="$1"
-
     local container_id
 
     container_id="$(
         offline_gpu_compose \
-            "$addon_dir" \
             ps -q llama-server
     )"
 
@@ -69,14 +61,8 @@ offline_gpu_runtime() {
     local expected_image
 
     expected_image="$(
-        offline_manifest_value \
-            "$addon_dir/versions.gpu.env" \
-            LLAMA_GPU_IMAGE
+        offline_gpu_image
     )"
-
-    [[ -n "$expected_image" ]] ||
-        offline_die \
-            "LLAMA_GPU_IMAGE is missing"
 
     local running_id
     local expected_id
@@ -115,46 +101,25 @@ offline_gpu_runtime() {
             "CUDA device is not visible to llama-server"
 
     echo
-    echo \
-        "OFFLINE GPU RUNTIME PASS"
+    echo "OFFLINE GPU RUNTIME PASS"
 }
 
 offline_gpu_enable() {
-    local addon="${1:-}"
-
-    [[ -n "$addon" ]] ||
+    [[ -f "$OFFLINE_ROOT/images/llama-gpu.tar" ]] ||
         offline_die \
-            "usage: manage.sh gpu enable ADDON_DIR"
-
-    local addon_dir
-
-    addon_dir="$(
-        readlink -f "$addon"
-    )"
-
-    [[ -d "$addon_dir" ]] ||
-        offline_die \
-            "GPU add-on directory does not exist"
-
-    offline_gpu_compatibility \
-        "$addon_dir"
-
-    offline_checksum \
-        "$addon_dir"
+            "embedded NVIDIA image is missing"
 
     echo \
-        "Loading offline NVIDIA image..."
+        "Loading NVIDIA image..."
 
     docker load \
-        -i "$addon_dir/images/llama-gpu.tar" \
+        -i "$OFFLINE_ROOT/images/llama-gpu.tar" \
         >/dev/null
 
     local gpu_image
 
     gpu_image="$(
-        offline_manifest_value \
-            "$addon_dir/versions.gpu.env" \
-            LLAMA_GPU_IMAGE
+        offline_gpu_image
     )"
 
     docker image inspect \
@@ -164,20 +129,14 @@ offline_gpu_enable() {
     echo \
         "Checking NVIDIA runtime..."
 
-    docker run \
-        --rm \
-        --gpus all \
-        "$gpu_image" \
-        --list-devices \
-        | grep -q 'CUDA0:' ||
+    offline_gpu_available ||
         offline_die \
             "NVIDIA GPU is unavailable to Docker"
 
     echo \
-        "Starting GPU llama-server..."
+        "Starting GPU runtime..."
 
     offline_gpu_compose \
-        "$addon_dir" \
         up \
         -d \
         --pull never \
@@ -186,14 +145,16 @@ offline_gpu_enable() {
         llama-server
 
     offline_gpu_compose \
-        "$addon_dir" \
         up \
         -d \
         --pull never \
         --wait
 
-    offline_gpu_runtime \
-        "$addon_dir"
+    offline_gpu_runtime
+
+    offline_set_env \
+        CHATBOT_ACCELERATOR \
+        gpu
 
     offline_verify
 
@@ -204,7 +165,7 @@ offline_gpu_enable() {
 
 offline_gpu_disable() {
     echo \
-        "Restoring CPU llama-server..."
+        "Restoring CPU runtime..."
 
     offline_compose \
         up \
@@ -240,6 +201,10 @@ offline_gpu_disable() {
         offline_die \
             "CPU llama-server still has a GPU device request"
 
+    offline_set_env \
+        CHATBOT_ACCELERATOR \
+        cpu
+
     offline_verify
 
     echo
@@ -251,13 +216,16 @@ offline_gpu_status() {
     local container_id
 
     container_id="$(
-        offline_compose \
+        offline_runtime_compose \
             ps -q llama-server
     )"
 
     [[ -n "$container_id" ]] ||
         offline_die \
             "llama-server is not running"
+
+    echo \
+        "accelerator=$(offline_accelerator)"
 
     echo "image=$(
         docker inspect \

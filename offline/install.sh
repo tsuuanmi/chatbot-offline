@@ -9,6 +9,11 @@ ROOT="$(
 
 cd "$ROOT"
 
+export OFFLINE_ROOT="$ROOT"
+
+source "$ROOT/offline/lib/common.sh"
+source "$ROOT/offline/lib/gpu.sh"
+
 log() {
     printf '[install] %s\n' "$*"
 }
@@ -24,7 +29,8 @@ require_command() {
 }
 
 if [[ "${EUID}" -eq 0 ]]; then
-    die "Run installer as the deployment user with Docker access, not as root"
+    die \
+        "Run installer as the deployment user with Docker access, not as root"
 fi
 
 for command in \
@@ -36,10 +42,12 @@ do
 done
 
 docker info >/dev/null 2>&1 ||
-    die "Docker daemon is unavailable for this user"
+    die \
+        "Docker daemon is unavailable for this user"
 
 docker compose version >/dev/null 2>&1 ||
-    die "Docker Compose plugin is unavailable"
+    die \
+        "Docker Compose plugin is unavailable"
 
 [[ -f SHA256SUMS ]] ||
     die "SHA256SUMS is missing"
@@ -47,15 +55,23 @@ docker compose version >/dev/null 2>&1 ||
 [[ -f BUNDLE-MANIFEST.txt ]] ||
     die "BUNDLE-MANIFEST.txt is missing"
 
-log "Verifying offline bundle"
+BUNDLE_TYPE="$(
+    offline_manifest_value \
+        BUNDLE-MANIFEST.txt \
+        bundle_type
+)"
+
+[[ "$BUNDLE_TYPE" == "universal" ]] ||
+    die \
+        "Only universal runtime releases are supported"
+
+log "Verifying runtime release"
 sha256sum -c SHA256SUMS >/dev/null
 
 BUNDLE_ARCH="$(
-    awk -F= '
-        $1 == "architecture" {
-            print substr($0, index($0, "=") + 1)
-        }
-    ' BUNDLE-MANIFEST.txt
+    offline_manifest_value \
+        BUNDLE-MANIFEST.txt \
+        architecture
 )"
 
 if [[ -n "$BUNDLE_ARCH" ]] &&
@@ -66,85 +82,182 @@ then
 fi
 
 if [[ -f /etc/os-release ]]; then
-    # shellcheck disable=SC1091
     source /etc/os-release
 
     case "${ID:-}" in
         rhel|rocky|almalinux|centos)
             require_command getenforce
 
-            SELINUX_MODE="$(getenforce)"
+            SELINUX_MODE="$(
+                getenforce
+            )"
 
             [[ "$SELINUX_MODE" == "Enforcing" ]] ||
                 die \
                     "RHEL-compatible production deployment requires SELinux Enforcing"
 
-            log "SELinux Enforcing detected"
+            log \
+                "SELinux Enforcing detected"
             ;;
     esac
 fi
 
-log "Loading runtime images"
+log "Loading offline runtime images"
 
 for archive in \
     images/chatbot.tar \
     images/llama-cpu.tar \
+    images/llama-gpu.tar \
     images/postgres.tar \
     images/nginx.tar
 do
     [[ -f "$archive" ]] ||
-        die "Missing image archive: $archive"
+        die \
+            "Missing image archive: $archive"
 
-    docker load -i "$archive" >/dev/null
+    docker load \
+        -i "$archive" \
+        >/dev/null
 
-    log "Loaded $archive"
+    log \
+        "Loaded $archive"
 done
 
 set -a
-# shellcheck disable=SC1091
 source versions.env
+source versions.gpu.env
 set +a
 
 for variable in \
     CHATBOT_IMAGE \
     LLAMA_CPU_IMAGE \
+    LLAMA_GPU_IMAGE \
     POSTGRES_IMAGE \
     NGINX_IMAGE
 do
     value="${!variable:-}"
 
     [[ -n "$value" ]] ||
-        die "$variable is missing from versions.env"
+        die \
+            "$variable is missing from release configuration"
 
-    docker image inspect "$value" >/dev/null ||
-        die "Loaded image is unavailable: $value"
+    docker image inspect \
+        "$value" \
+        >/dev/null ||
+        die \
+            "Loaded image is unavailable: $value"
 done
 
 log "Runtime image verification passed"
 
 if [[ ! -f .env ]]; then
-    cp .env.example .env
+    cp \
+        .env.example \
+        .env
+
     chmod 600 .env
-    log "Created .env from .env.example"
+
+    log \
+        "Created .env from .env.example"
 fi
 
-SECRET_GID="$(id -g)"
-INSTALL_GATEWAY_BIND="${GATEWAY_BIND:-127.0.0.1}"
+MODEL_STORE="${CHATBOT_MODEL_STORE:-$HOME/.local/share/chatbot/models}"
+
+MODEL_PACKAGE="${CHATBOT_MODEL_PACKAGE:-}"
+
+log \
+    "Resolving model bundle"
+
+MODEL_OUTPUT="$(
+    python3 \
+        "$ROOT/offline/lib/models.py" \
+        install \
+        --root "$ROOT" \
+        --store "$MODEL_STORE" \
+        --package "$MODEL_PACKAGE"
+)"
+
+printf '%s\n' \
+    "$MODEL_OUTPUT"
+
+INSTALL_MODEL_DIR="$(
+    printf '%s\n' \
+        "$MODEL_OUTPUT" \
+    | awk -F= '
+        $1 == "MODEL_DIR" {
+            print substr($0, index($0, "=") + 1)
+        }
+    ' \
+    | tail -n 1
+)"
+
+[[ -n "$INSTALL_MODEL_DIR" ]] ||
+    die \
+        "Model installer did not return MODEL_DIR"
+
+INSTALL_ACCELERATOR="${CHATBOT_ACCELERATOR:-auto}"
+
+case "$INSTALL_ACCELERATOR" in
+    auto)
+        if offline_gpu_available; then
+            INSTALL_ACCELERATOR="gpu"
+
+            log \
+                "NVIDIA GPU detected; selecting GPU runtime"
+        else
+            INSTALL_ACCELERATOR="cpu"
+
+            log \
+                "NVIDIA GPU unavailable; selecting CPU runtime"
+        fi
+        ;;
+
+    cpu)
+        log \
+            "CPU runtime explicitly selected"
+        ;;
+
+    gpu)
+        offline_gpu_available ||
+            die \
+                "GPU mode requested but NVIDIA GPU is unavailable to Docker"
+
+        log \
+            "GPU runtime explicitly selected"
+        ;;
+
+    *)
+        die \
+            "Invalid accelerator: $INSTALL_ACCELERATOR; expected auto, cpu, or gpu"
+        ;;
+esac
+
+SECRET_GID="$(
+    id -g
+)"
+
+INSTALL_GATEWAY_BIND="${GATEWAY_BIND:-0.0.0.0}"
+
 INSTALL_GATEWAY_PORT="${GATEWAY_PORT:-18080}"
 
 python3 - \
+    "$ROOT/.env" \
     "$SECRET_GID" \
     "$INSTALL_GATEWAY_BIND" \
-    "$INSTALL_GATEWAY_PORT" <<'PY'
+    "$INSTALL_GATEWAY_PORT" \
+    "$INSTALL_MODEL_DIR" \
+    "$INSTALL_ACCELERATOR" <<'PY'
 from pathlib import Path
 import sys
 
-path = Path(".env")
+path = Path(sys.argv[1])
 
 values = {
-    "CHATBOT_SECRET_GID": sys.argv[1],
-    "GATEWAY_BIND": sys.argv[2],
-    "GATEWAY_PORT": sys.argv[3],
+    "CHATBOT_SECRET_GID": sys.argv[2],
+    "GATEWAY_BIND": sys.argv[3],
+    "GATEWAY_PORT": sys.argv[4],
+    "MODEL_DIR": sys.argv[5],
+    "CHATBOT_ACCELERATOR": sys.argv[6],
 }
 
 lines = path.read_text(
@@ -177,10 +290,10 @@ path.write_text(
 )
 PY
 
+chmod 600 .env
+
 set -a
-# shellcheck disable=SC1091
 source .env
-# shellcheck disable=SC1091
 source versions.env
 set +a
 
@@ -192,16 +305,19 @@ set +a
 
 [[ -f "${MODEL_DIR}/${LLAMA_MODEL_NAME}" ]] ||
     die \
-        "Bundled model is missing: ${MODEL_DIR}/${LLAMA_MODEL_NAME}"
+        "Main model is missing: ${MODEL_DIR}/${LLAMA_MODEL_NAME}"
 
 [[ -f "${MODEL_DIR}/${MTP_MODEL_NAME}" ]] ||
     die \
-        "Bundled MTP model is missing: ${MODEL_DIR}/${MTP_MODEL_NAME}"
+        "MTP model is missing: ${MODEL_DIR}/${MTP_MODEL_NAME}"
 
-PROJECT_NAME="${CHATBOT_PROJECT_NAME:-chatbot-offline}"
+PROJECT_NAME="chatbot"
 
-mkdir -p runtime/secrets
-chmod 700 runtime/secrets
+mkdir -p \
+    runtime/secrets
+
+chmod 700 \
+    runtime/secrets
 
 required_secrets=(
     runtime/secrets/chat_auth.json
@@ -225,20 +341,29 @@ fi
 
 if (( existing == 0 )); then
     POSTGRES_VOLUME="$(
-        docker volume ls             --quiet             --filter "label=com.docker.compose.project=${PROJECT_NAME}"             --filter "label=com.docker.compose.volume=postgres_data"         | head -n 1
+        docker volume ls \
+            --quiet \
+            --filter \
+                "label=com.docker.compose.project=${PROJECT_NAME}" \
+            --filter \
+                "label=com.docker.compose.volume=postgres_data" \
+        | head -n 1
     )"
 
     if [[ -n "$POSTGRES_VOLUME" ]]; then
-        die             "PostgreSQL data exists for project ${PROJECT_NAME}, but runtime secrets are missing; restore the original secrets or remove the old data volume for a fresh installation"
+        die \
+            "PostgreSQL data exists for project ${PROJECT_NAME}, but runtime secrets are missing"
     fi
 
     INSTALL_OWNER="${CHAT_OWNER_ID:-local-user}"
 
-    log "Generating local credentials"
+    log \
+        "Generating local credentials"
 
     umask 077
 
-    python3 - "$INSTALL_OWNER" <<'PY'
+    python3 - \
+        "$INSTALL_OWNER" <<'PY'
 from __future__ import annotations
 
 import hashlib
@@ -247,7 +372,6 @@ import re
 import secrets
 import sys
 from pathlib import Path
-
 
 owner = sys.argv[1]
 
@@ -329,67 +453,90 @@ chmod 640 \
 chmod 600 \
     runtime/secrets/chat_api_key
 
+log \
+    "Validating Compose configuration"
 
-compose() {
-    docker compose \
-        --project-directory "$ROOT" \
-        --project-name "$PROJECT_NAME" \
-        --env-file "$ROOT/.env" \
-        --env-file "$ROOT/versions.env" \
-        "$@"
-}
+offline_runtime_compose \
+    config \
+    >/dev/null
 
-log "Validating Compose configuration"
-compose config >/dev/null
+log \
+    "Starting PostgreSQL"
 
-log "Starting PostgreSQL"
-compose up \
+offline_compose \
+    up \
     -d \
     postgres \
     --pull never \
     --wait
 
-log "Applying database migrations"
-compose \
+log \
+    "Applying database migrations"
+
+offline_compose \
     --profile tools \
     run \
     --rm \
     db-migrate
 
-log "Building knowledge index"
-compose \
+log \
+    "Building knowledge index"
+
+offline_compose \
     --profile tools \
     run \
     --rm \
     index-knowledge
 
-log "Starting llama.cpp"
-compose up \
+log \
+    "Starting ${INSTALL_ACCELERATOR^^} llama.cpp"
+
+offline_runtime_compose \
+    up \
     -d \
     llama-server \
     --pull never \
+    --force-recreate \
     --wait
 
-log "Starting chatbot and Nginx"
-compose up \
+log \
+    "Starting chatbot and Nginx"
+
+offline_runtime_compose \
+    up \
     -d \
     chatbot \
     proxy \
     --pull never \
     --wait
 
-log "Verifying installed deployment"
+log \
+    "Verifying installed deployment"
 
-"$ROOT/offline/manage.sh" verify
+offline_verify
+
+HOST_IP="$(
+    offline_detect_host_ip
+)"
+
+PORT="${GATEWAY_PORT:-18080}"
 
 echo
-log "OFFLINE INSTALL PASS"
 
-DISPLAY_GATEWAY_BIND="${GATEWAY_BIND:-127.0.0.1}"
+log \
+    "OFFLINE INSTALL PASS"
 
-if [[ "$DISPLAY_GATEWAY_BIND" == "0.0.0.0" ]]; then
-    DISPLAY_GATEWAY_BIND="127.0.0.1"
-fi
+log \
+    "accelerator=$INSTALL_ACCELERATOR"
 
-log "gateway=http://${DISPLAY_GATEWAY_BIND}:${GATEWAY_PORT:-18080}"
-log "project=${PROJECT_NAME}"
+log \
+    "local=http://127.0.0.1:${PORT}"
+
+log \
+    "network=http://${HOST_IP}:${PORT}"
+
+log \
+    "project=chatbot"
+
+log \
+    "models=$MODEL_DIR"

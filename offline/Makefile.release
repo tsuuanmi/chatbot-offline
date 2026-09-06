@@ -17,6 +17,8 @@ SHELL := /bin/bash
 install:
 	@CHATBOT_ACCELERATOR="$(or $(ACCELERATOR),auto)" \
 		CHATBOT_HOST_IP="$(HOST_IP)" \
+		CHATBOT_MODEL_PACKAGE="$(MODEL_PACKAGE)" \
+		CHATBOT_MODEL_STORE="$(MODEL_STORE)" \
 		./offline/install.sh
 
 start:

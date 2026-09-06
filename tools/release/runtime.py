@@ -545,6 +545,7 @@ def verify(
             "images/nginx.tar",
             "offline/install.sh",
             "offline/manage.sh",
+            "offline/lib/models.py",
             "nginx/nginx.conf",
             "pipelines",
             "database",
