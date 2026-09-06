@@ -126,11 +126,9 @@ Implemented:
 Acceptance:
 
 ```text
-make smoke-history
-make smoke-history-context
-make smoke-history-concurrency
 make verify
-make offline-restart
+make accept
+make recovery
 ```
 
 ### M6B — Authentication and Ownership
@@ -221,7 +219,7 @@ No external exposure before M7 is complete.
 
 ## M8 — Fully Offline Distribution
 
-Status: IN PROGRESS
+Status: IN PROGRESS — implementation complete; real RHEL + SELinux Enforcing acceptance pending
 
 Goals:
 
@@ -259,7 +257,7 @@ Requirements:
 * measurable performance benefit: COMPLETE
 * optional offline NVIDIA GPU add-on: COMPLETE
 
-Reference measurement on Quadro RTX 5000:
+Pre-MTP M9 reference measurement on Quadro RTX 5000:
 
 * CPU median total latency: 15.51 s
 * GPU median total latency: 2.97 s
@@ -276,57 +274,92 @@ retrieval, authentication, or streaming semantics.
 
 ## M10 — Final Cleanup and Release Acceptance
 
-Status: IN PROGRESS
+Status: IN PROGRESS — internal release gates complete; real RHEL + SELinux Enforcing acceptance pending
 
-Goals:
+Completed:
 
-* dead-code cleanup
+* dead-code and tooling canonicalization
 * dependency audit
-* secret audit
+* runtime secret audit
 * Ubuntu acceptance
-* RHEL + SELinux acceptance
 * CPU performance baseline
 * concurrency baseline
-* restart/recovery test
-* persistent-state recovery verification
-* release artifact provenance verification
+* restart and persistent-state recovery acceptance
+* clean release artifact provenance verification
+* CPU/GPU artifact pair verification
+* fresh offline installation acceptance
+* installer rerun/idempotence acceptance
+* offline restart acceptance
+* NVIDIA GPU enable acceptance
+* CPU fallback acceptance
+* Gemma 4 MTP speculative decoding
 * production release checklist
+
+Pending external gate:
+
+* real RHEL-compatible host acceptance with SELinux Enforcing
+
+MTP release configuration:
+
+* speculative type: `draft-mtp`
+* draft length: 2 tokens
+* CPU draft GPU layers: 0
+* NVIDIA draft GPU layers: 99
+* CPU remains the mandatory reference deployment
+
+Canonical CPU MTP performance baseline:
+
+* median stream rate: 143.9 chars/s
+* two-client aggregate stream rate: 143.4 chars/s
+* two-client median request latency: 14.28 s
+* two-client p95 request latency: 21.01 s
+* two-client median TTFT: 3.33 s
+
+These measurements describe the validated host and are not universal SLAs.
 
 ---
 
 ## Current Acceptance Commands
 
-Non-mutating regression:
+Source regression:
 
 ```bash
 make verify
 ```
 
-Stateful conversation acceptance:
+Full source acceptance:
 
 ```bash
-make smoke-history
-make smoke-history-context
-make smoke-history-concurrency
+make accept
 ```
 
-Readiness:
+Persistent-state recovery:
 
 ```bash
-make ready
+make recovery
 ```
 
-Image consistency:
+Performance:
 
 ```bash
-make image-info
+python3 -m tools.bench stream --label LABEL
+python3 -m tools.bench concurrency --label LABEL --clients 2
 ```
 
-Offline restart:
+Offline deployment:
 
 ```bash
-make offline-restart
-make ready
+./offline/manage.sh verify
+./offline/manage.sh accept
+./offline/manage.sh restart
+```
+
+Release artifacts:
+
+```bash
+python3 -m tools.release build cpu --version VERSION
+python3 -m tools.release build gpu --version VERSION
+python3 -m tools.release verify pair CPU_BUNDLE GPU_ADDON
 ```
 
 ---

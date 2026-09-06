@@ -12,7 +12,7 @@ Clean, production-oriented offline chatbot for forensic genetics.
 - Minimal number of long-running services.
 - Explicit, testable forensic domain and risk policies.
 - Local retrieval with approved evidence and citations.
-- Simple offline installation, update, backup, and rollback.
+- Simple offline installation and minimal operations: start, stop, restart, status, logs, reindex, verify, and optional GPU enable/disable.
 
 ## Non-goals
 
@@ -49,7 +49,7 @@ Core architectural requirements:
 
 * Fully offline runtime.
 * CPU-first reference implementation; GPU acceleration is optional.
-* llama.cpp for local inference.
+* llama.cpp for local inference with Gemma 4 MTP speculative decoding.
 * PostgreSQL + pgvector for persistence and semantic retrieval.
 * FastEmbed / ONNX CPU embeddings.
 * PostgreSQL full-text search + semantic search fused with RRF.
@@ -77,54 +77,66 @@ Core architectural requirements:
 * M7 — Nginx and production hardening: COMPLETE
 * M8 — Fully offline distribution for Ubuntu and RHEL: IN PROGRESS — Ubuntu validated; RHEL/SELinux acceptance pending
 * M9 — Optional NVIDIA GPU acceleration: COMPLETE
-* M10 — Final cleanup and release acceptance: PENDING
+* M10 — Final cleanup and release acceptance: IN PROGRESS — internal gates complete; RHEL/SELinux acceptance pending
 
 ### Current Acceptance Commands
 
-Common regression:
+Common runtime regression:
 
-```
+```bash
 make verify
 ```
 
-Conversation persistence and context:
+Full source acceptance:
 
-```
-make smoke-history
-make smoke-history-context
-make smoke-history-concurrency
+```bash
+make accept
 ```
 
-Authentication:
+Persistent-state restart/recovery:
 
-```
-make smoke-auth
-make smoke-api-contract
-```
-
-Authenticated ownership:
-
-```
-make smoke-ownership
+```bash
+make recovery
 ```
 
-Runtime readiness:
+CPU performance baseline:
 
-```
-make ready
+```bash
+CHAT_CLIENT_API_KEY_FILE=runtime/secrets/chat_api_key \
+python3 -m tools.bench stream \
+  --label cpu-mtp-n2
+
+CHAT_CLIENT_API_KEY_FILE=runtime/secrets/chat_api_key \
+python3 -m tools.bench concurrency \
+  --label cpu-mtp-n2-c2 \
+  --clients 2
 ```
 
-Offline restart:
+Offline deployment:
 
-```
-make offline-restart
-make ready
+```bash
+./offline/manage.sh verify
+./offline/manage.sh accept
+./offline/manage.sh restart
 ```
 
-Image consistency:
+Optional NVIDIA GPU:
 
+```bash
+./offline/manage.sh gpu enable ADDON_DIR
+./offline/manage.sh gpu status
+./offline/manage.sh gpu disable
 ```
-make image-info
+
+Release artifacts:
+
+```bash
+python3 -m tools.release build cpu --version VERSION
+python3 -m tools.release build gpu --version VERSION
+
+python3 -m tools.release verify pair \
+  CPU_BUNDLE \
+  GPU_ADDON
 ```
 
 ### Production Safety Invariants
