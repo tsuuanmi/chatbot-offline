@@ -490,6 +490,10 @@ def gateway_suite() -> None:
             404,
         )
 
+    # Chat endpoints intentionally accept larger request
+    # bodies for base64 image input. Oversized text that
+    # is still below the gateway body limit must therefore
+    # reach application validation.
     status, _, _ = request(
         GATEWAY_URL,
         "/chat/run",
@@ -503,7 +507,27 @@ def gateway_suite() -> None:
     )
 
     expect_status(
-        "oversized request blocked",
+        "oversized text rejected by application",
+        status,
+        422,
+    )
+
+    # The gateway must still enforce the dedicated 10 MiB
+    # chat request limit before forwarding excessive bodies.
+    status, _, _ = request(
+        GATEWAY_URL,
+        "/chat/run",
+        method="POST",
+        body={
+            "message": (
+                "x" * (11 * 1024 * 1024)
+            )
+        },
+        authenticated=True,
+    )
+
+    expect_status(
+        "gateway chat body limit enforced",
         status,
         413,
     )

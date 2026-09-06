@@ -24,6 +24,8 @@ class PipelineWrapper(BasePipelineWrapper):
         self,
         message: str,
         conversation_id: UUID | None = None,
+        figure_id: str | None = None,
+        image: str | None = None,
     ) -> dict[str, object]:
         try:
             return await self.chat.answer(
@@ -34,7 +36,14 @@ class PipelineWrapper(BasePipelineWrapper):
                     is not None
                     else None
                 ),
+                figure_id=figure_id,
+                image=image,
             )
+        except ValueError as error:
+            raise HTTPException(
+                status_code=422,
+                detail=str(error),
+            ) from error
         except ConversationOwnershipError as error:
             raise HTTPException(
                 status_code=404,

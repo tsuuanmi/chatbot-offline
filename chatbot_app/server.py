@@ -32,6 +32,8 @@ logger = logging.getLogger(__name__)
 class StreamChatRequest(BaseModel):
     message: str
     conversation_id: UUID | None = None
+    figure_id: str | None = None
+    image: str | None = None
 
 
 _PUBLIC_PATHS = {
@@ -204,6 +206,8 @@ def create_authenticated_app():
                             is not None
                             else None
                         ),
+                        figure_id=payload.figure_id,
+                        image=payload.image,
                     ):
                         yield (
                             "data: "

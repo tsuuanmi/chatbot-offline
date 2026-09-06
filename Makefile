@@ -7,8 +7,12 @@ VERSIONS_ENV ?= versions.env
 RUNTIME_ENV ?= .env
 APP_TAG ?= chatbot-app:local
 
-AUTH_REGISTRY ?= runtime/secrets/chat_auth.json
-CLIENT_API_KEY ?= runtime/secrets/chat_api_key
+RUNTIME_STATE_DIR ?= $(shell \
+	sed -n 's/^CHATBOT_RUNTIME_DIR=//p' $(RUNTIME_ENV) \
+	| tail -n 1)
+
+AUTH_REGISTRY ?= $(RUNTIME_STATE_DIR)/secrets/chat_auth.json
+CLIENT_API_KEY ?= $(RUNTIME_STATE_DIR)/secrets/chat_api_key
 
 GATEWAY_PORT ?= 18080
 GATEWAY_URL ?= http://127.0.0.1:$(GATEWAY_PORT)
