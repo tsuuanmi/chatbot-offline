@@ -24,6 +24,9 @@ from chatbot_app.auth import (
 from chatbot_app.forensic_chat import (
     get_forensic_chat,
 )
+from chatbot_app.public_api import (
+    router as public_api_router,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -117,6 +120,9 @@ def _unauthorized() -> JSONResponse:
 def create_authenticated_app():
     registry = get_auth_registry()
     app = create_app()
+    app.include_router(
+        public_api_router
+    )
 
     @app.get("/live")
     async def live() -> dict[str, str]:

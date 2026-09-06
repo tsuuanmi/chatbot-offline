@@ -11,6 +11,7 @@ from .api import (
     internal_security_suite,
     policy_routing_suite,
     policy_tests,
+    public_api_suite,
     runtime_python_compile,
     stream_suite,
     unit_tests,
@@ -65,6 +66,7 @@ def verify() -> None:
     )
 
     gateway_suite()
+    public_api_suite()
     media_quick_suite()
     runtime_python_compile()
 

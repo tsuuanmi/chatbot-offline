@@ -13,6 +13,7 @@ export OFFLINE_ROOT="$ROOT"
 
 source "$ROOT/offline/lib/common.sh"
 source "$ROOT/offline/lib/gpu.sh"
+source "$ROOT/offline/lib/host.sh"
 
 log() {
     printf '[install] %s\n' "$*"
@@ -29,9 +30,44 @@ require_command() {
 }
 
 if [[ "${EUID}" -eq 0 ]]; then
-    die \
-        "Run installer as the deployment user with Docker access, not as root"
+    [[ -n "${SUDO_USER:-}" ]] ||
+        die \
+            "Run installer with sudo from the deployment user, not from a direct root login"
+
+    [[ "${SUDO_USER}" != "root" ]] ||
+        die \
+            "SUDO_USER must identify the non-root deployment user"
+
+    DEPLOY_USER="${SUDO_USER}"
+else
+    DEPLOY_USER="$(id -un)"
 fi
+
+require_command getent
+
+DEPLOY_UID="$(
+    id -u "$DEPLOY_USER"
+)"
+
+DEPLOY_GID="$(
+    id -g "$DEPLOY_USER"
+)"
+
+DEPLOY_HOME="$(
+    getent passwd "$DEPLOY_USER" |
+    awk -F: '{print $6}'
+)"
+
+[[ -n "$DEPLOY_HOME" ]] ||
+    die \
+        "Unable to determine home directory for deployment user: $DEPLOY_USER"
+
+[[ "$DEPLOY_HOME" == /* ]] ||
+    die \
+        "Deployment home is not absolute: $DEPLOY_HOME"
+
+log \
+    "Deployment owner=$DEPLOY_USER uid=$DEPLOY_UID gid=$DEPLOY_GID home=$DEPLOY_HOME"
 
 for command in \
     docker \
@@ -161,11 +197,11 @@ if [[ ! -f .env ]]; then
         "Created .env from .env.example"
 fi
 
-MODEL_STORE="${CHATBOT_MODEL_STORE:-$HOME/.local/share/chatbot/models}"
+MODEL_STORE="${CHATBOT_MODEL_STORE:-$DEPLOY_HOME/.local/share/chatbot/models}"
 
-STATE_DIR="${CHATBOT_STATE_DIR:-$HOME/.local/share/chatbot/state}"
+STATE_DIR="${CHATBOT_STATE_DIR:-$DEPLOY_HOME/.local/share/chatbot/state}"
 
-FIGURE_STORE="${CHATBOT_FIGURE_STORE:-$HOME/.local/share/chatbot/figures}"
+FIGURE_STORE="${CHATBOT_FIGURE_STORE:-$DEPLOY_HOME/.local/share/chatbot/figures}"
 
 if [[ ! -d "$FIGURE_STORE" ]]; then
     mkdir -p "$FIGURE_STORE"
@@ -219,6 +255,16 @@ INSTALL_MODEL_DIR="$(
     die \
         "Model installer did not return MODEL_DIR"
 
+
+chown -R \
+    "$DEPLOY_UID:$DEPLOY_GID" \
+    "$MODEL_STORE"
+
+chown -R \
+    "$DEPLOY_UID:$DEPLOY_GID" \
+    "$FIGURE_STORE" \
+    "$STATE_DIR"
+
 INSTALL_ACCELERATOR="${CHATBOT_ACCELERATOR:-auto}"
 
 case "$INSTALL_ACCELERATOR" in
@@ -256,13 +302,21 @@ case "$INSTALL_ACCELERATOR" in
         ;;
 esac
 
-SECRET_GID="$(
-    id -g
-)"
+SECRET_GID="$DEPLOY_GID"
 
 INSTALL_GATEWAY_BIND="${GATEWAY_BIND:-0.0.0.0}"
 
 INSTALL_GATEWAY_PORT="${GATEWAY_PORT:-18080}"
+
+HOST_NETWORK="$(offline_host_network)"
+
+IFS='|' read -r \
+    HOST_IP \
+    LAN_CIDR \
+    NETWORK_INTERFACE \
+    <<<"$HOST_NETWORK"
+
+log "Detected LAN host=$HOST_IP network=$LAN_CIDR interface=$NETWORK_INTERFACE"
 
 python3 - \
     "$ROOT/.env" \
@@ -272,7 +326,10 @@ python3 - \
     "$INSTALL_MODEL_DIR" \
     "$INSTALL_RUNTIME_DIR" \
     "$INSTALL_FIGURE_DIR" \
-    "$INSTALL_ACCELERATOR" <<'PY'
+    "$INSTALL_ACCELERATOR" \
+    "$HOST_IP" \
+    "$LAN_CIDR" \
+    "$NETWORK_INTERFACE" <<'PY'
 from pathlib import Path
 import sys
 
@@ -286,6 +343,9 @@ values = {
     "CHATBOT_RUNTIME_DIR": sys.argv[6],
     "FIGURE_DIR": sys.argv[7],
     "CHATBOT_ACCELERATOR": sys.argv[8],
+    "CHATBOT_HOST_IP": sys.argv[9],
+    "CHATBOT_LAN_CIDR": sys.argv[10],
+    "CHATBOT_NETWORK_INTERFACE": sys.argv[11],
 }
 
 lines = path.read_text(
@@ -371,6 +431,17 @@ done
 if (( existing != 0 && existing != ${#required_secrets[@]} )); then
     die \
         "Partial secret configuration detected; refusing to regenerate credentials"
+fi
+
+PREINSTALL_CHAT_API_KEY_SHA256=""
+
+if (( existing == ${#required_secrets[@]} )); then
+    PREINSTALL_CHAT_API_KEY_SHA256="$(
+        sha256sum "$SECRETS_DIR/chat_api_key" |
+        awk '{print $1}'
+    )"
+
+    log "Reusing persistent credentials"
 fi
 
 if (( existing == 0 )); then
@@ -488,6 +559,29 @@ chmod 640 \
 chmod 600 \
     "$SECRETS_DIR/chat_api_key"
 
+if [[ -n "$PREINSTALL_CHAT_API_KEY_SHA256" ]]; then
+    CURRENT_CHAT_API_KEY_SHA256="$(
+        sha256sum "$SECRETS_DIR/chat_api_key" |
+        awk '{print $1}'
+    )"
+
+    [[ "$CURRENT_CHAT_API_KEY_SHA256" == "$PREINSTALL_CHAT_API_KEY_SHA256" ]] ||
+        die "Client API key changed during update"
+
+    log "API KEY PERSISTENCE PASS"
+else
+    log "API KEY INITIALIZED"
+fi
+
+log "Configuring boot startup and LAN isolation"
+
+offline_configure_host \
+    "$HOST_IP" \
+    "$LAN_CIDR" \
+    "$NETWORK_INTERFACE" \
+    "$INSTALL_GATEWAY_BIND" \
+    "$INSTALL_GATEWAY_PORT"
+
 log "Stopping previous chatbot runtime"
 
 mapfile -t OLD_CONTAINERS < <(
@@ -576,10 +670,6 @@ log \
     "Verifying installed deployment"
 
 offline_verify
-
-HOST_IP="$(
-    offline_detect_host_ip
-)"
 
 PORT="${GATEWAY_PORT:-18080}"
 

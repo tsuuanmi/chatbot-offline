@@ -172,6 +172,8 @@ offline_accept() {
     echo \
         "PASS chatbot private network boundary"
 
+    offline_host_accept
+
     offline_verify
     offline_media_accept
 

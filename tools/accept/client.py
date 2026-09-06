@@ -11,6 +11,15 @@ from tools.http_client import json_headers
 from .config import INTERNAL_URL
 
 
+def _uses_public_api(
+    base_url: str,
+) -> bool:
+    return (
+        base_url.rstrip("/")
+        != INTERNAL_URL.rstrip("/")
+    )
+
+
 def request(
     base_url: str,
     path: str,
@@ -150,9 +159,17 @@ def chat_result(
             "image"
         ] = image
 
+    public_api = _uses_public_api(
+        base_url
+    )
+
     status, _, raw = request(
         base_url,
-        "/chat/run",
+        (
+            "/api/v1/chat"
+            if public_api
+            else "/chat/run"
+        ),
         method="POST",
         body=payload,
         authenticated=True,
@@ -168,6 +185,9 @@ def chat_result(
     body = json_body(
         raw
     )
+
+    if public_api:
+        return body
 
     result = body.get(
         "result"
@@ -211,9 +231,15 @@ def stream_events(
             "image"
         ] = image
 
+    stream_path = (
+        "/api/v1/chat/stream"
+        if _uses_public_api(base_url)
+        else "/chat/stream"
+    )
+
     req = urllib.request.Request(
         base_url.rstrip("/")
-        + "/chat/stream",
+        + stream_path,
         data=json.dumps(
             payload,
             ensure_ascii=False,

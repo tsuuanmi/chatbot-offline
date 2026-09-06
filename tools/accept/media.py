@@ -115,19 +115,7 @@ def _image_data_url() -> str:
 def _result(
     raw: bytes,
 ) -> dict[str, object]:
-    body = json_body(raw)
-
-    value = body.get("result")
-
-    if not isinstance(
-        value,
-        dict,
-    ):
-        raise RuntimeError(
-            "chat response has no result object"
-        )
-
-    return value
+    return json_body(raw)
 
 
 def _decision(
@@ -312,7 +300,7 @@ def media_quick_suite() -> None:
 
     status, _, _ = request(
         GATEWAY_URL,
-        "/chat/run",
+        "/api/v1/chat",
         method="POST",
         body={
             "message": "Giải thích hình này",
@@ -329,7 +317,7 @@ def media_quick_suite() -> None:
 
     status, _, _ = request(
         GATEWAY_URL,
-        "/chat/run",
+        "/api/v1/chat",
         method="POST",
         body={
             "message": (
@@ -349,7 +337,7 @@ def media_quick_suite() -> None:
 
     status, _, _ = request(
         GATEWAY_URL,
-        "/chat/run",
+        "/api/v1/chat",
         method="POST",
         body={
             "message": "Giải thích hình này",
@@ -367,7 +355,7 @@ def media_quick_suite() -> None:
 
     status, _, raw = request(
         GATEWAY_URL,
-        "/chat/run",
+        "/api/v1/chat",
         method="POST",
         body={
             "message": "Cách nấu phở bò ngon?",
@@ -411,7 +399,7 @@ def media_quick_suite() -> None:
 
     status, _, raw = request(
         GATEWAY_URL,
-        "/chat/run",
+        "/api/v1/chat",
         method="POST",
         body={
             "message": (

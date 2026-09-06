@@ -100,12 +100,13 @@ def runtime(
             )
 
     request = urllib.request.Request(
-        gateway + "/healthcheck/run",
-        data=b"{}",
+        gateway + "/ready",
         headers={
-            "Content-Type": "application/json",
+            "Authorization": (
+                "Bearer " + api_key
+            ),
         },
-        method="POST",
+        method="GET",
     )
 
     with urllib.request.urlopen(
@@ -114,18 +115,16 @@ def runtime(
     ) as response:
         body = json.load(response)
 
-    result = body.get("result")
-
     if (
-        not isinstance(result, dict)
-        or result.get("status") != "ready"
+        not isinstance(body, dict)
+        or body.get("status") != "ready"
     ):
         raise RuntimeError(
-            f"service is not ready: {result}"
+            f"service is not ready: {body}"
         )
 
     request = urllib.request.Request(
-        gateway + "/chat/run",
+        gateway + "/api/v1/chat",
         data=json.dumps(
             {
                 "message": (
@@ -149,9 +148,13 @@ def runtime(
     ) as response:
         body = json.load(response)
 
-    if not isinstance(
-        body.get("result"),
-        dict,
+    if (
+        not isinstance(body, dict)
+        or not isinstance(
+            body.get("answer"),
+            str,
+        )
+        or not body["answer"].strip()
     ):
         raise RuntimeError(
             "invalid authenticated chat response"
@@ -222,7 +225,7 @@ def media(
         payload: dict[str, object],
     ) -> tuple[int, dict[str, object]]:
         req = urllib.request.Request(
-            gateway + "/chat/run",
+            gateway + "/api/v1/chat",
             data=json.dumps(
                 payload,
                 ensure_ascii=False,
@@ -262,14 +265,7 @@ def media(
     def result(
         body: dict[str, object],
     ) -> dict[str, object]:
-        value = body.get("result")
-
-        if not isinstance(value, dict):
-            raise RuntimeError(
-                "media response has no result object"
-            )
-
-        return value
+        return body
 
     status, _ = post({
         "message": "Giải thích hình này",

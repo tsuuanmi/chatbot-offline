@@ -11,6 +11,7 @@ export OFFLINE_ROOT
 
 source "$OFFLINE_ROOT/offline/lib/common.sh"
 source "$OFFLINE_ROOT/offline/lib/gpu.sh"
+source "$OFFLINE_ROOT/offline/lib/host.sh"
 source "$OFFLINE_ROOT/offline/lib/accept.sh"
 
 offline_require_installation

@@ -254,6 +254,68 @@ class ConversationRepository:
             for row in reversed(rows)
         ]
 
+    async def delete_conversation(
+        self,
+        conversation_id: UUID,
+        *,
+        owner_id: str,
+    ) -> int:
+        await self.connect()
+
+        async with self._pool.connection() as connection:
+            async with connection.transaction():
+                cursor = await connection.execute(
+                    """
+                    SELECT owner_id
+                    FROM conversations
+                    WHERE id = %s
+                    """,
+                    (conversation_id,),
+                )
+
+                owner = await cursor.fetchone()
+
+                if owner is None:
+                    return 0
+
+                if owner["owner_id"] != owner_id:
+                    raise ConversationOwnershipError(
+                        "Conversation belongs to another owner"
+                    )
+
+                cursor = await connection.execute(
+                    """
+                    SELECT COUNT(*) AS turn_count
+                    FROM conversation_turns
+                    WHERE conversation_id = %s
+                    """,
+                    (conversation_id,),
+                )
+
+                row = await cursor.fetchone()
+
+                if row is None:
+                    raise RuntimeError(
+                        "Unable to count conversation turns"
+                    )
+
+                deleted_turns = int(
+                    row["turn_count"]
+                )
+
+                await connection.execute(
+                    """
+                    DELETE FROM conversations
+                    WHERE id = %s
+                      AND owner_id = %s
+                    """,
+                    (
+                        conversation_id,
+                        owner_id,
+                    ),
+                )
+
+        return deleted_turns
     async def _ensure_conversation(
         self,
         connection: AsyncConnection,

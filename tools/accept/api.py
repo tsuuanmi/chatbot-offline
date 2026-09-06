@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import json
 import sys
+from uuid import uuid4
 
 from .client import (
     chat_result,
     expect_status,
+    json_body,
     request,
     require_stream,
     stream_events,
@@ -246,7 +249,7 @@ def policy_routing_suite() -> None:
 def api_contract_suite() -> None:
     status, _, _ = request(
         INTERNAL_URL,
-        "/chat/run",
+        "/api/v1/chat",
         method="POST",
         body={
             "message": "STR là gì?",
@@ -261,7 +264,7 @@ def api_contract_suite() -> None:
 
     status, _, _ = request(
         INTERNAL_URL,
-        "/chat/run",
+        "/api/v1/chat",
         method="POST",
         body={
             "message": "STR là gì?",
@@ -282,7 +285,7 @@ def api_contract_suite() -> None:
 
     status, _, _ = request(
         INTERNAL_URL,
-        "/chat/run",
+        "/api/v1/chat",
         method="POST",
         body={
             "message": "STR là gì?",
@@ -321,6 +324,217 @@ def api_contract_suite() -> None:
 
     print(
         "API CONTRACT ACCEPTANCE PASS"
+    )
+
+
+def public_api_suite() -> None:
+    status, _, _ = request(
+        GATEWAY_URL,
+        "/ready",
+    )
+
+    expect_status(
+        "public readiness requires auth",
+        status,
+        401,
+    )
+
+    status, _, raw = request(
+        GATEWAY_URL,
+        "/ready",
+        authenticated=True,
+    )
+
+    expect_status(
+        "public authenticated readiness",
+        status,
+        200,
+    )
+
+    ready = json_body(raw)
+
+    if ready.get("status") != "ready":
+        raise RuntimeError(
+            f"unexpected readiness response: {ready}"
+        )
+
+    status, _, _ = request(
+        GATEWAY_URL,
+        "/api/v1/chat",
+        method="POST",
+        body={
+            "message": "STR là gì?",
+        },
+    )
+
+    expect_status(
+        "public chat requires auth",
+        status,
+        401,
+    )
+
+    status, _, raw = request(
+        GATEWAY_URL,
+        "/api/v1/chat",
+        method="POST",
+        body={
+            "message": (
+                "FST cao hay thấp phản ánh "
+                "mối quan hệ di truyền như thế nào "
+                "giữa các quần thể?"
+            ),
+        },
+        authenticated=True,
+    )
+
+    expect_status(
+        "public stateless chat",
+        status,
+        200,
+    )
+
+    result = json_body(raw)
+
+    if "result" in result:
+        raise RuntimeError(
+            "public API leaked Hayhooks result envelope"
+        )
+
+    for key in (
+        "answer",
+        "source",
+        "decision",
+        "evidence_status",
+        "citations",
+    ):
+        if key not in result:
+            raise RuntimeError(
+                f"public chat response missing {key}"
+            )
+
+    if (
+        "conversation_id" in result
+        or "turn" in result
+    ):
+        raise RuntimeError(
+            "stateless public request was persisted"
+        )
+
+    print(
+        "PASS public response contract"
+    )
+
+    conversation_id = str(
+        uuid4()
+    )
+
+    for message in (
+        "STR là gì?",
+        "FST có ý nghĩa gì trong di truyền quần thể?",
+    ):
+        status, _, raw = request(
+            GATEWAY_URL,
+            "/api/v1/chat",
+            method="POST",
+            body={
+                "message": message,
+                "conversation_id": conversation_id,
+            },
+            authenticated=True,
+        )
+
+        expect_status(
+            "public stateful chat",
+            status,
+            200,
+        )
+
+        result = json_body(raw)
+
+        if (
+            result.get("conversation_id")
+            != conversation_id
+        ):
+            raise RuntimeError(
+                "public conversation_id changed"
+            )
+
+    status, headers, raw = request(
+        GATEWAY_URL,
+        "/api/v1/chat/stream",
+        method="POST",
+        body={
+            "message": (
+                "FST cao hay thấp phản ánh "
+                "mối quan hệ di truyền như thế nào "
+                "giữa các quần thể?"
+            ),
+        },
+        authenticated=True,
+        timeout=180,
+    )
+
+    expect_status(
+        "public SSE chat",
+        status,
+        200,
+    )
+
+    content_type = headers.get(
+        "Content-Type",
+        "",
+    )
+
+    if not content_type.startswith(
+        "text/event-stream"
+    ):
+        raise RuntimeError(
+            "public stream is not SSE"
+        )
+
+    stream = raw.decode(
+        "utf-8"
+    )
+
+    for event_type in (
+        '"type":"start"',
+        '"type":"chunk"',
+        '"type":"end"',
+    ):
+        if event_type not in stream:
+            raise RuntimeError(
+                "public stream missing "
+                + event_type
+            )
+
+    status, _, raw = request(
+        GATEWAY_URL,
+        (
+            "/api/v1/conversations/"
+            + conversation_id
+        ),
+        method="DELETE",
+        authenticated=True,
+    )
+
+    expect_status(
+        "public conversation delete",
+        status,
+        200,
+    )
+
+    deleted = json_body(raw)
+
+    if deleted.get(
+        "deleted_turns"
+    ) != 2:
+        raise RuntimeError(
+            "expected 2 deleted turns, got "
+            f"{deleted!r}"
+        )
+
+    print(
+        "PUBLIC API ACCEPTANCE PASS"
     )
 
 
@@ -415,9 +629,8 @@ def gateway_suite() -> None:
 
     status, _, _ = request(
         GATEWAY_URL,
-        "/healthcheck/run",
-        method="POST",
-        body={},
+        "/ready",
+        authenticated=True,
     )
 
     expect_status(
@@ -428,7 +641,7 @@ def gateway_suite() -> None:
 
     status, _, _ = request(
         GATEWAY_URL,
-        "/chat/run",
+        "/api/v1/chat",
         method="POST",
         body={
             "message": (
@@ -445,7 +658,7 @@ def gateway_suite() -> None:
 
     status, _, _ = request(
         GATEWAY_URL,
-        "/chat/run",
+        "/api/v1/chat",
         method="POST",
         body={
             "message": (
@@ -465,6 +678,9 @@ def gateway_suite() -> None:
         "/status",
         "/classify/run",
         "/deploy-yaml",
+        "/chat/run",
+        "/chat/stream",
+        "/healthcheck/run",
     ):
         status, _, _ = request(
             GATEWAY_URL,
@@ -496,7 +712,7 @@ def gateway_suite() -> None:
     # reach application validation.
     status, _, _ = request(
         GATEWAY_URL,
-        "/chat/run",
+        "/api/v1/chat",
         method="POST",
         body={
             "message": (
@@ -516,7 +732,7 @@ def gateway_suite() -> None:
     # chat request limit before forwarding excessive bodies.
     status, _, _ = request(
         GATEWAY_URL,
-        "/chat/run",
+        "/api/v1/chat",
         method="POST",
         body={
             "message": (
