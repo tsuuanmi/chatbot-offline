@@ -165,6 +165,24 @@ MODEL_STORE="${CHATBOT_MODEL_STORE:-$HOME/.local/share/chatbot/models}"
 
 STATE_DIR="${CHATBOT_STATE_DIR:-$HOME/.local/share/chatbot/state}"
 
+FIGURE_STORE="${CHATBOT_FIGURE_STORE:-$HOME/.local/share/chatbot/figures}"
+
+if [[ ! -d "$FIGURE_STORE" ]]; then
+    mkdir -p "$FIGURE_STORE"
+
+    if [[ -d "$ROOT/data/figures" ]]; then
+        cp -a \
+            "$ROOT/data/figures/." \
+            "$FIGURE_STORE/"
+    fi
+
+    log "Initialized persistent figure store"
+else
+    log "Reusing persistent figure store"
+fi
+
+INSTALL_FIGURE_DIR="$(cd "$FIGURE_STORE" && pwd)"
+
 mkdir -p "$STATE_DIR"
 
 INSTALL_RUNTIME_DIR="$(cd "$STATE_DIR" && pwd)"
@@ -253,6 +271,7 @@ python3 - \
     "$INSTALL_GATEWAY_PORT" \
     "$INSTALL_MODEL_DIR" \
     "$INSTALL_RUNTIME_DIR" \
+    "$INSTALL_FIGURE_DIR" \
     "$INSTALL_ACCELERATOR" <<'PY'
 from pathlib import Path
 import sys
@@ -265,7 +284,8 @@ values = {
     "GATEWAY_PORT": sys.argv[4],
     "MODEL_DIR": sys.argv[5],
     "CHATBOT_RUNTIME_DIR": sys.argv[6],
-    "CHATBOT_ACCELERATOR": sys.argv[7],
+    "FIGURE_DIR": sys.argv[7],
+    "CHATBOT_ACCELERATOR": sys.argv[8],
 }
 
 lines = path.read_text(
@@ -307,6 +327,7 @@ set +a
 
 : "${MODEL_DIR:?MODEL_DIR is required}"
 : "${LLAMA_MODEL_NAME:?LLAMA_MODEL_NAME is required}"
+: "${MMPROJ_MODEL:?MMPROJ_MODEL is required}"
 : "${MTP_MODEL_NAME:?MTP_MODEL_NAME is required}"
 : "${POSTGRES_USER:?POSTGRES_USER is required}"
 : "${POSTGRES_DB:?POSTGRES_DB is required}"
@@ -317,6 +338,10 @@ SECRETS_DIR="${CHATBOT_RUNTIME_DIR}/secrets"
 [[ -f "${MODEL_DIR}/${LLAMA_MODEL_NAME}" ]] ||
     die \
         "Main model is missing: ${MODEL_DIR}/${LLAMA_MODEL_NAME}"
+
+[[ -f "${MODEL_DIR}/${MMPROJ_MODEL}" ]] ||
+    die \
+        "Multimodal projector is missing: ${MODEL_DIR}/${MMPROJ_MODEL}"
 
 [[ -f "${MODEL_DIR}/${MTP_MODEL_NAME}" ]] ||
     die \

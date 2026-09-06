@@ -148,7 +148,7 @@ services:
       FIGURE_DESCRIPTION_VERSION: ${FIGURE_DESCRIPTION_VERSION:-1}
 
     volumes:
-      - ./data/figures:/data/figures:ro,z
+      - ${FIGURE_DIR:-./data/figures}:/data/figures:ro,z
       - ${CHATBOT_RUNTIME_DIR:-./runtime}/secrets/llama_api_key:/run/secrets/llama_api_key:ro,z
       - ${CHATBOT_RUNTIME_DIR:-./runtime}/secrets/postgres_password:/run/secrets/postgres_password:ro,z
 
