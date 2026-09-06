@@ -16,6 +16,10 @@ from chatbot_app.citations import (
 from chatbot_app.retrieval import (
     HybridRetrievalResult,
 )
+from chatbot_app.relevance import (
+    is_semantically_relevant,
+    minimum_semantic_score,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,6 +87,10 @@ class EvidencePolicy:
             config["high_risk_max_evidence"]
         )
 
+        self.minimum_semantic_score = (
+            minimum_semantic_score()
+        )
+
     @property
     def has_authoritative_topics(self) -> bool:
         return bool(
@@ -117,6 +125,16 @@ class EvidencePolicy:
         selected: list[EvidenceItem] = []
 
         for document in retrieval.hybrid:
+            semantic_score = semantic_scores.get(
+                document.id
+            )
+
+            if not is_semantically_relevant(
+                semantic_score,
+                self.minimum_semantic_score,
+            ):
+                continue
+
             meta = document.meta
 
             if (
@@ -151,9 +169,7 @@ class EvidencePolicy:
                             fallback_id=document.id,
                         )
                     ),
-                    semantic_score=semantic_scores.get(
-                        document.id
-                    ),
+                    semantic_score=semantic_score,
                     authoritative=authoritative,
                 )
             )

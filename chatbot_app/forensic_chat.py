@@ -187,6 +187,13 @@ class ForensicChatService:
             maximum=24000,
         )
 
+        self.generation_max_output_tokens = bounded_env_int(
+            "LLAMA_MAX_OUTPUT_TOKENS",
+            default=2048,
+            minimum=128,
+            maximum=4096,
+        )
+
         self.generation_queue_timeout_seconds = bounded_env_int(
             "CHAT_GENERATION_QUEUE_TIMEOUT_SECONDS",
             default=5,
@@ -235,7 +242,7 @@ class ForensicChatService:
             ],
             generation_kwargs={
                 "temperature": 0.2,
-                "max_tokens": 512,
+                "max_tokens": self.generation_max_output_tokens,
             },
             timeout=600.0,
             max_retries=0,
