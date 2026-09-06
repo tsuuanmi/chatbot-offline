@@ -142,6 +142,37 @@ def verify_network_boundary(
     )
 
 
+
+def require_bundled_model(
+    root: Path,
+    manifest: dict[str, str],
+    key: str,
+) -> None:
+    name = manifest.get(
+        key,
+        "",
+    )
+
+    if (
+        not name
+        or Path(name).name != name
+    ):
+        raise RuntimeError(
+            f"invalid {key} in bundle manifest"
+        )
+
+    path = (
+        root
+        / "runtime/models"
+        / name
+    )
+
+    if not path.is_file():
+        raise RuntimeError(
+            f"bundled model is missing: {name}"
+        )
+
+
 def verify_cpu(
     root: Path,
 ) -> dict[str, str]:
@@ -174,6 +205,18 @@ def verify_cpu(
     manifest = read_manifest(
         root
         / "BUNDLE-MANIFEST.txt"
+    )
+
+    require_bundled_model(
+        root,
+        manifest,
+        "llama_model",
+    )
+
+    require_bundled_model(
+        root,
+        manifest,
+        "mtp_model",
     )
 
     if manifest.get(

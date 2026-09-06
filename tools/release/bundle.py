@@ -113,6 +113,7 @@ def build(
         "NGINX_IMAGE",
         "MODEL_DIR",
         "LLAMA_MODEL_NAME",
+        "MTP_MODEL_NAME",
         "EMBEDDING_MODEL",
         "EMBEDDING_DIMENSION",
     )
@@ -135,19 +136,28 @@ def build(
             f"bundle already exists: {bundle}"
         )
 
-    model = (
-        Path(
-            values["MODEL_DIR"]
-        )
-        / values[
-            "LLAMA_MODEL_NAME"
-        ]
+    model_dir = Path(
+        values["MODEL_DIR"]
     )
 
-    if not model.is_file():
-        raise RuntimeError(
-            f"model not found: {model}"
-        )
+    model = (
+        model_dir
+        / values["LLAMA_MODEL_NAME"]
+    )
+
+    mtp_model = (
+        model_dir
+        / values["MTP_MODEL_NAME"]
+    )
+
+    for label, path in (
+        ("model", model),
+        ("MTP model", mtp_model),
+    ):
+        if not path.is_file():
+            raise RuntimeError(
+                f"{label} not found: {path}"
+            )
 
     source_images = {
         "CHATBOT_IMAGE": (
@@ -264,6 +274,17 @@ def build(
         ),
     )
 
+    shutil.copy2(
+        mtp_model,
+        (
+            bundle
+            / "runtime/models"
+            / values[
+                "MTP_MODEL_NAME"
+            ]
+        ),
+    )
+
     privatize_chatbot(
         bundle
         / "compose.yaml"
@@ -346,6 +367,23 @@ def build(
                 values[
                     "LLAMA_MODEL_NAME"
                 ]
+            ),
+            "mtp_model": (
+                values[
+                    "MTP_MODEL_NAME"
+                ]
+            ),
+            "llama_spec_type": (
+                values.get(
+                    "LLAMA_SPEC_TYPE",
+                    "draft-mtp",
+                )
+            ),
+            "llama_spec_draft_n_max": (
+                values.get(
+                    "LLAMA_SPEC_DRAFT_N_MAX",
+                    "2",
+                )
             ),
             "embedding_model": (
                 values[

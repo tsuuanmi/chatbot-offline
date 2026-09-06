@@ -14,6 +14,7 @@ GATEWAY_PORT ?= 18080
 GATEWAY_URL ?= http://127.0.0.1:$(GATEWAY_PORT)
 
 LLAMA_GPU_LAYERS ?= 99
+LLAMA_GPU_LAYERS_DRAFT ?= 99
 
 COMPOSE = env \
 	-u CHATBOT_IMAGE \
@@ -184,6 +185,7 @@ reindex: check-env
 
 gpu: check-env auth-check
 	@LLAMA_GPU_LAYERS="$(LLAMA_GPU_LAYERS)" \
+		LLAMA_GPU_LAYERS_DRAFT="$(LLAMA_GPU_LAYERS_DRAFT)" \
 		$(GPU_COMPOSE) up \
 			-d \
 			--pull never \
@@ -191,6 +193,7 @@ gpu: check-env auth-check
 			--wait \
 			llama-server
 	@LLAMA_GPU_LAYERS="$(LLAMA_GPU_LAYERS)" \
+		LLAMA_GPU_LAYERS_DRAFT="$(LLAMA_GPU_LAYERS_DRAFT)" \
 		$(GPU_COMPOSE) up \
 			-d \
 			--pull never \

@@ -186,12 +186,17 @@ set +a
 
 : "${MODEL_DIR:?MODEL_DIR is required}"
 : "${LLAMA_MODEL_NAME:?LLAMA_MODEL_NAME is required}"
+: "${MTP_MODEL_NAME:?MTP_MODEL_NAME is required}"
 : "${POSTGRES_USER:?POSTGRES_USER is required}"
 : "${POSTGRES_DB:?POSTGRES_DB is required}"
 
 [[ -f "${MODEL_DIR}/${LLAMA_MODEL_NAME}" ]] ||
     die \
         "Bundled model is missing: ${MODEL_DIR}/${LLAMA_MODEL_NAME}"
+
+[[ -f "${MODEL_DIR}/${MTP_MODEL_NAME}" ]] ||
+    die \
+        "Bundled MTP model is missing: ${MODEL_DIR}/${MTP_MODEL_NAME}"
 
 PROJECT_NAME="${CHATBOT_PROJECT_NAME:-chatbot-offline}"
 
@@ -379,7 +384,12 @@ log "Verifying installed deployment"
 
 echo
 log "OFFLINE INSTALL PASS"
-log "gateway=$(
-    GATEWAY_BIND="$GATEWAY_BIND"     GATEWAY_PORT="$GATEWAY_PORT"     "$ROOT/offline/manage.sh" gateway-url
-)"
+
+DISPLAY_GATEWAY_BIND="${GATEWAY_BIND:-127.0.0.1}"
+
+if [[ "$DISPLAY_GATEWAY_BIND" == "0.0.0.0" ]]; then
+    DISPLAY_GATEWAY_BIND="127.0.0.1"
+fi
+
+log "gateway=http://${DISPLAY_GATEWAY_BIND}:${GATEWAY_PORT:-18080}"
 log "project=${PROJECT_NAME}"

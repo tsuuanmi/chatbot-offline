@@ -130,6 +130,14 @@ services:
       - /models/${LLAMA_MODEL_NAME}
       - --alias
       - ${LLAMA_MODEL_ALIAS}
+      - --spec-draft-model
+      - /models/${MTP_MODEL_NAME}
+      - --spec-type
+      - ${LLAMA_SPEC_TYPE:-draft-mtp}
+      - --spec-draft-n-max
+      - "${LLAMA_SPEC_DRAFT_N_MAX:-2}"
+      - --spec-draft-ngl
+      - "${LLAMA_GPU_LAYERS_DRAFT:-0}"
       - --host
       - 0.0.0.0
       - --port

@@ -99,6 +99,7 @@ def build(
             f"LLAMA_GPU_IMAGE="
             f"{local_image}\n"
             "LLAMA_GPU_LAYERS=99\n"
+            "LLAMA_GPU_LAYERS_DRAFT=99\n"
         ),
         encoding="utf-8",
     )
