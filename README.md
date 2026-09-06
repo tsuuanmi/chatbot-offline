@@ -1,4 +1,4 @@
-# chatbot-offline
+# Chatbot
 
 Clean, production-oriented offline chatbot for forensic genetics.
 
@@ -6,7 +6,7 @@ Clean, production-oriented offline chatbot for forensic genetics.
 
 - Fully functional without Internet access at runtime.
 - CPU is the reference and mandatory execution path.
-- GPU acceleration is optional.
+- NVIDIA GPU acceleration is optional; CPU remains mandatory.
 - Supports Ubuntu and Red Hat Enterprise Linux.
 - Reproducible Docker-based deployment.
 - Minimal number of long-running services.
@@ -56,7 +56,11 @@ Core architectural requirements:
 * Versioned database migrations only; application startup must not perform DDL.
 * Secrets must be supplied through mounted secret files and must never be committed or logged.
 * RHEL deployments must support SELinux Enforcing.
-* Nginx is the configurable LAN-facing gateway; direct chatbot host access remains loopback-only for local maintenance and testing.
+* Nginx is the LAN-facing gateway; production binds to all host interfaces by default and the installer reports the detected LAN address.
+* Exactly one `chatbot` Compose project is active at a time.
+* A runtime release contains both CPU and NVIDIA GPU images with one shared release version.
+* Model files are distributed independently from runtime releases and reused across code updates.
+* Persistent models and secrets live outside versioned runtime release directories.
 * Conversation history is context only and must never be treated as authoritative evidence.
 * High-risk policy always takes precedence over prepared answers and generation.
 * Conversation ownership must come from authenticated identity, never from a client-supplied owner ID.
@@ -81,62 +85,58 @@ Core architectural requirements:
 
 ### Current Acceptance Commands
 
-Common runtime regression:
+Source runtime acceptance:
 
 ```bash
 make verify
-```
-
-Full source acceptance:
-
-```bash
 make accept
-```
-
-Persistent-state restart/recovery:
-
-```bash
 make recovery
 ```
 
-CPU performance baseline:
+Build the universal offline runtime release:
 
 ```bash
-CHAT_CLIENT_API_KEY_FILE=runtime/secrets/chat_api_key \
-python3 -m tools.bench stream \
-  --label cpu-mtp-n2
-
-CHAT_CLIENT_API_KEY_FILE=runtime/secrets/chat_api_key \
-python3 -m tools.bench concurrency \
-  --label cpu-mtp-n2-c2 \
-  --clients 2
+make release
 ```
 
-Offline deployment:
+Build the independent model package only when the model set changes:
 
 ```bash
-./offline/manage.sh verify
-./offline/manage.sh accept
-./offline/manage.sh restart
+make release-models
 ```
 
-Optional NVIDIA GPU:
+Target installation:
 
 ```bash
-./offline/manage.sh gpu enable ADDON_DIR
-./offline/manage.sh gpu status
-./offline/manage.sh gpu disable
+make install
 ```
 
-Release artifacts:
+The target must already provide Docker Engine, the Docker Compose plugin, Python 3, `make`, and ZIP extraction support. Installing those host prerequisites fully offline is future work and is not part of the current runtime artifact.
+
+The installer:
+
+- verifies the runtime artifact and architecture
+- reuses or installs the required model package
+- loads all runtime images locally without network pulls
+- automatically selects NVIDIA GPU when Docker exposes CUDA, otherwise CPU
+- preserves PostgreSQL, models, and secrets across runtime upgrades
+- replaces the previous `chatbot` containers in place
+- removes superseded chatbot image versions after successful installation
+- binds the gateway to `0.0.0.0` by default and reports local and LAN URLs
+
+Target operations:
 
 ```bash
-python3 -m tools.release build cpu --version VERSION
-python3 -m tools.release build gpu --version VERSION
-
-python3 -m tools.release verify pair \
-  CPU_BUNDLE \
-  GPU_ADDON
+make start
+make stop
+make restart
+make status
+make logs
+make reindex
+make verify
+make accept
+make gpu
+make cpu
 ```
 
 ### Production Safety Invariants

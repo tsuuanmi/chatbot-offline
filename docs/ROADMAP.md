@@ -1,4 +1,4 @@
-# Chatbot Offline Roadmap
+# Chatbot Roadmap
 
 ## Mission
 
@@ -223,14 +223,23 @@ Status: IN PROGRESS — implementation complete; real RHEL + SELinux Enforcing a
 
 Goals:
 
-* reproducible offline bundle
-* pinned runtime images
-* pinned model files
-* checksums
+* one universal runtime ZIP containing both CPU and NVIDIA GPU runtime images
+* one independently versioned model ZIP containing the main and MTP GGUF files
+* pinned runtime images and model identities
+* checksums and clean-source provenance
 * one portable installation workflow for Ubuntu and RHEL
+* one active Compose project named `chatbot`
+* one shared release version across all chatbot runtime images
+* persistent model store reused across code releases
+* persistent secret store reused across code releases
+* persistent PostgreSQL volume reused across code releases
+* in-place replacement of the previous chatbot runtime
+* removal of superseded chatbot image versions after successful upgrade
+* automatic CPU/NVIDIA selection with explicit CPU/GPU overrides
+* automatic LAN IPv4 discovery for the displayed network URL
 * SELinux Enforcing-safe deployment
 * no network pulls during installation
-* minimal offline operations: start, stop, status, logs, reindex, and verify
+* minimal offline operations: start, stop, restart, status, logs, reindex, verify, accept, GPU enable, and CPU fallback
 * safe refusal when persistent database state exists but credentials are missing
 
 ---
@@ -255,7 +264,7 @@ Requirements:
 * CPU fallback remains available: COMPLETE
 * identical behavioral acceptance: COMPLETE
 * measurable performance benefit: COMPLETE
-* optional offline NVIDIA GPU add-on: COMPLETE
+* universal runtime artifact includes both CPU and NVIDIA GPU execution paths: COMPLETE
 
 Pre-MTP M9 reference measurement on Quadro RTX 5000:
 
@@ -286,9 +295,16 @@ Completed:
 * concurrency baseline
 * restart and persistent-state recovery acceptance
 * clean release artifact provenance verification
-* CPU/GPU artifact pair verification
+* universal CPU+GPU runtime artifact verification
+* independent model artifact verification
+* runtime/model separation verification
 * fresh offline installation acceptance
 * installer rerun/idempotence acceptance
+* code-only update with model reuse acceptance
+* persistent secrets across runtime versions acceptance
+* persistent PostgreSQL volume across runtime versions acceptance
+* single active `chatbot` runtime acceptance
+* superseded image cleanup acceptance
 * offline restart acceptance
 * NVIDIA GPU enable acceptance
 * CPU fallback acceptance
@@ -321,21 +337,11 @@ These measurements describe the validated host and are not universal SLAs.
 
 ## Current Acceptance Commands
 
-Source regression:
+Source runtime regression:
 
 ```bash
 make verify
-```
-
-Full source acceptance:
-
-```bash
 make accept
-```
-
-Persistent-state recovery:
-
-```bash
 make recovery
 ```
 
@@ -346,21 +352,27 @@ python3 -m tools.bench stream --label LABEL
 python3 -m tools.bench concurrency --label LABEL --clients 2
 ```
 
-Offline deployment:
-
-```bash
-./offline/manage.sh verify
-./offline/manage.sh accept
-./offline/manage.sh restart
-```
-
 Release artifacts:
 
 ```bash
-python3 -m tools.release build cpu --version VERSION
-python3 -m tools.release build gpu --version VERSION
-python3 -m tools.release verify pair CPU_BUNDLE GPU_ADDON
+make release
+make release-models
+
+python3 -m tools.release verify runtime dist/chatbot-VERSION.zip
+python3 -m tools.release verify models dist/chatbot-models-MODEL_VERSION.zip
 ```
+
+Offline target:
+
+```bash
+make install
+make verify
+make accept
+make cpu
+make gpu
+```
+
+Runtime and model releases have independent lifecycles. A normal code update copies only the new runtime ZIP when the required model bundle is already installed.
 
 ---
 
