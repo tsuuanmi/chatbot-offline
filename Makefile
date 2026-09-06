@@ -63,7 +63,7 @@ TOOLS = $(COMPOSE) --profile tools
 
 help:
 	@printf '%s\n' \
-		'chatbot-offline commands' \
+		'chatbot commands' \
 		'' \
 		'Runtime:' \
 		'  make build             Build and pin chatbot image' \

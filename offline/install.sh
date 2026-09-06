@@ -163,6 +163,12 @@ fi
 
 MODEL_STORE="${CHATBOT_MODEL_STORE:-$HOME/.local/share/chatbot/models}"
 
+STATE_DIR="${CHATBOT_STATE_DIR:-$HOME/.local/share/chatbot/state}"
+
+mkdir -p "$STATE_DIR"
+
+INSTALL_RUNTIME_DIR="$(cd "$STATE_DIR" && pwd)"
+
 MODEL_PACKAGE="${CHATBOT_MODEL_PACKAGE:-}"
 
 log \
@@ -246,6 +252,7 @@ python3 - \
     "$INSTALL_GATEWAY_BIND" \
     "$INSTALL_GATEWAY_PORT" \
     "$INSTALL_MODEL_DIR" \
+    "$INSTALL_RUNTIME_DIR" \
     "$INSTALL_ACCELERATOR" <<'PY'
 from pathlib import Path
 import sys
@@ -257,7 +264,8 @@ values = {
     "GATEWAY_BIND": sys.argv[3],
     "GATEWAY_PORT": sys.argv[4],
     "MODEL_DIR": sys.argv[5],
-    "CHATBOT_ACCELERATOR": sys.argv[6],
+    "CHATBOT_RUNTIME_DIR": sys.argv[6],
+    "CHATBOT_ACCELERATOR": sys.argv[7],
 }
 
 lines = path.read_text(
@@ -302,6 +310,9 @@ set +a
 : "${MTP_MODEL_NAME:?MTP_MODEL_NAME is required}"
 : "${POSTGRES_USER:?POSTGRES_USER is required}"
 : "${POSTGRES_DB:?POSTGRES_DB is required}"
+: "${CHATBOT_RUNTIME_DIR:?CHATBOT_RUNTIME_DIR is required}"
+
+SECRETS_DIR="${CHATBOT_RUNTIME_DIR}/secrets"
 
 [[ -f "${MODEL_DIR}/${LLAMA_MODEL_NAME}" ]] ||
     die \
@@ -313,17 +324,15 @@ set +a
 
 PROJECT_NAME="chatbot"
 
-mkdir -p \
-    runtime/secrets
+mkdir -p "$SECRETS_DIR"
 
-chmod 700 \
-    runtime/secrets
+chmod 700 "$SECRETS_DIR"
 
 required_secrets=(
-    runtime/secrets/chat_auth.json
-    runtime/secrets/chat_api_key
-    runtime/secrets/llama_api_key
-    runtime/secrets/postgres_password
+    "$SECRETS_DIR/chat_auth.json"
+    "$SECRETS_DIR/chat_api_key"
+    "$SECRETS_DIR/llama_api_key"
+    "$SECRETS_DIR/postgres_password"
 )
 
 existing=0
@@ -363,7 +372,8 @@ if (( existing == 0 )); then
     umask 077
 
     python3 - \
-        "$INSTALL_OWNER" <<'PY'
+        "$INSTALL_OWNER" \
+        "$SECRETS_DIR" <<'PY'
 from __future__ import annotations
 
 import hashlib
@@ -384,7 +394,7 @@ if not re.fullmatch(
     )
 
 root = Path(
-    "runtime/secrets"
+    sys.argv[2]
 )
 
 client_key = secrets.token_urlsafe(
@@ -441,17 +451,35 @@ PY
 fi
 
 chgrp "$SECRET_GID" \
-    runtime/secrets/chat_auth.json \
-    runtime/secrets/llama_api_key \
-    runtime/secrets/postgres_password
+    "$SECRETS_DIR/chat_auth.json" \
+    "$SECRETS_DIR/llama_api_key" \
+    "$SECRETS_DIR/postgres_password"
 
 chmod 640 \
-    runtime/secrets/chat_auth.json \
-    runtime/secrets/llama_api_key \
-    runtime/secrets/postgres_password
+    "$SECRETS_DIR/chat_auth.json" \
+    "$SECRETS_DIR/llama_api_key" \
+    "$SECRETS_DIR/postgres_password"
 
 chmod 600 \
-    runtime/secrets/chat_api_key
+    "$SECRETS_DIR/chat_api_key"
+
+log "Stopping previous chatbot runtime"
+
+mapfile -t OLD_CONTAINERS < <(
+    docker ps -aq \
+        --filter "label=com.docker.compose.project=chatbot"
+)
+
+if (( ${#OLD_CONTAINERS[@]} > 0 )); then
+    docker rm -f \
+        "${OLD_CONTAINERS[@]}" \
+        >/dev/null
+fi
+
+docker network rm \
+    chatbot_default \
+    >/dev/null 2>&1 \
+    || true
 
 log \
     "Validating Compose configuration"
@@ -520,6 +548,48 @@ HOST_IP="$(
 )"
 
 PORT="${GATEWAY_PORT:-18080}"
+
+log "Removing superseded chatbot image versions"
+
+CURRENT_IMAGES=(
+    "$CHATBOT_IMAGE"
+    "$LLAMA_CPU_IMAGE"
+    "$LLAMA_GPU_IMAGE"
+    "$POSTGRES_IMAGE"
+    "$NGINX_IMAGE"
+)
+
+for repository in \
+    chatbot-app \
+    chatbot-llama-cpu \
+    chatbot-llama-gpu \
+    chatbot-postgres \
+    chatbot-nginx
+do
+    while IFS= read -r image; do
+        [[ -n "$image" ]] || continue
+
+        keep=false
+
+        for current in "${CURRENT_IMAGES[@]}"; do
+            if [[ "$image" == "$current" ]]; then
+                keep=true
+                break
+            fi
+        done
+
+        if [[ "$keep" == false ]]; then
+            docker image rm \
+                "$image" \
+                >/dev/null 2>&1 \
+                || true
+        fi
+    done < <(
+        docker image ls \
+            "$repository" \
+            --format '{{.Repository}}:{{.Tag}}'
+    )
+done
 
 echo
 

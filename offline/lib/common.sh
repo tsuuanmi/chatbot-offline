@@ -155,6 +155,19 @@ offline_runtime_compose() {
     fi
 }
 
+offline_runtime_dir() {
+    local value
+
+    value="$(offline_env_value CHATBOT_RUNTIME_DIR)"
+    value="${value:-./runtime}"
+
+    if [[ "$value" == /* ]]; then
+        printf '%s\n' "$value"
+    else
+        readlink -f "$OFFLINE_ROOT/$value"
+    fi
+}
+
 offline_gateway_url() {
     local port
 
@@ -258,5 +271,5 @@ offline_verify() {
         "$OFFLINE_ROOT/offline/lib/check.py" \
         runtime \
         "$(offline_gateway_url)" \
-        "$OFFLINE_ROOT/runtime/secrets/chat_api_key"
+        "$(offline_runtime_dir)/secrets/chat_api_key"
 }

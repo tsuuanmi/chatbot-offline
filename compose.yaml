@@ -1,7 +1,8 @@
-name: chatbot-offline
+name: chatbot
 
 services:
   postgres:
+    container_name: chatbot-postgres
     image: ${POSTGRES_IMAGE}
     pull_policy: never
 
@@ -15,7 +16,7 @@ services:
 
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./runtime/secrets/postgres_password:/run/secrets/postgres_password:ro,z
+      - ${CHATBOT_RUNTIME_DIR:-./runtime}/secrets/postgres_password:/run/secrets/postgres_password:ro,z
 
     expose:
       - "5432"
@@ -59,7 +60,7 @@ services:
 
     volumes:
       - ./database:/database:ro,z
-      - ./runtime/secrets/postgres_password:/run/secrets/postgres_password:ro,z
+      - ${CHATBOT_RUNTIME_DIR:-./runtime}/secrets/postgres_password:/run/secrets/postgres_password:ro,z
 
     depends_on:
       postgres:
@@ -106,7 +107,7 @@ services:
 
     volumes:
       - ./data/documents:/data:ro,z
-      - ./runtime/secrets/postgres_password:/run/secrets/postgres_password:ro,z
+      - ${CHATBOT_RUNTIME_DIR:-./runtime}/secrets/postgres_password:/run/secrets/postgres_password:ro,z
 
     depends_on:
       postgres:
@@ -119,6 +120,7 @@ services:
 
 
   llama-server:
+    container_name: chatbot-llama
     image: ${LLAMA_CPU_IMAGE}
     pull_policy: never
 
@@ -161,7 +163,7 @@ services:
 
     volumes:
       - ${MODEL_DIR}:/models:ro,z
-      - ./runtime/secrets/llama_api_key:/run/secrets/llama_api_key:ro,z
+      - ${CHATBOT_RUNTIME_DIR:-./runtime}/secrets/llama_api_key:/run/secrets/llama_api_key:ro,z
 
     expose:
       - "8080"
@@ -186,6 +188,7 @@ services:
 
 
   chatbot:
+    container_name: chatbot-app
     image: ${CHATBOT_IMAGE}
     pull_policy: never
 
@@ -235,9 +238,9 @@ services:
     volumes:
       - ./pipelines:/app/pipelines:ro,z
       - ./data/documents:/app/data/documents:ro,z
-      - ./runtime/secrets/chat_auth.json:/run/secrets/chat_auth.json:ro,z
-      - ./runtime/secrets/llama_api_key:/run/secrets/llama_api_key:ro,z
-      - ./runtime/secrets/postgres_password:/run/secrets/postgres_password:ro,z
+      - ${CHATBOT_RUNTIME_DIR:-./runtime}/secrets/chat_auth.json:/run/secrets/chat_auth.json:ro,z
+      - ${CHATBOT_RUNTIME_DIR:-./runtime}/secrets/llama_api_key:/run/secrets/llama_api_key:ro,z
+      - ${CHATBOT_RUNTIME_DIR:-./runtime}/secrets/postgres_password:/run/secrets/postgres_password:ro,z
 
     ports:
       - "127.0.0.1:1416:1416"
@@ -282,6 +285,7 @@ services:
 
 
   proxy:
+    container_name: chatbot-proxy
     image: ${NGINX_IMAGE}
     pull_policy: never
 

@@ -1,1 +1,1 @@
-"""Operational tooling for chatbot-offline."""
+"""Operational tooling for chatbot."""

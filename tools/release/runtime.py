@@ -69,12 +69,20 @@ def _release_compose(
         encoding="utf-8"
     )
 
-    text = text.replace(
-        "name: chatbot-offline\n",
-        "name: chatbot\n",
-        1,
+    required_compose = (
+        "name: chatbot",
+        "container_name: chatbot-postgres",
+        "container_name: chatbot-llama",
+        "container_name: chatbot-app",
+        "container_name: chatbot-proxy",
     )
 
+    for value in required_compose:
+        if value not in text:
+            raise RuntimeError(
+                "source compose requirement missing: "
+                f"{value}"
+            )
     old = (
         '    ports:\n'
         '      - "127.0.0.1:1416:1416"\n'
@@ -95,32 +103,6 @@ def _release_compose(
         new,
         1,
     )
-
-    container_names = {
-        "postgres": "chatbot-postgres",
-        "llama-server": "chatbot-llama",
-        "chatbot": "chatbot-app",
-        "proxy": "chatbot-proxy",
-    }
-
-    for service, name in container_names.items():
-        marker = f"  {service}:\n"
-
-        if marker not in text:
-            raise RuntimeError(
-                f"compose service missing: {service}"
-            )
-
-        replacement = (
-            marker
-            + f"    container_name: {name}\n"
-        )
-
-        text = text.replace(
-            marker,
-            replacement,
-            1,
-        )
 
     target.write_text(
         text,

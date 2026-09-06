@@ -19,6 +19,7 @@ install:
 		CHATBOT_HOST_IP="$(HOST_IP)" \
 		CHATBOT_MODEL_PACKAGE="$(MODEL_PACKAGE)" \
 		CHATBOT_MODEL_STORE="$(MODEL_STORE)" \
+		CHATBOT_STATE_DIR="$(STATE_DIR)" \
 		./offline/install.sh
 
 start:
