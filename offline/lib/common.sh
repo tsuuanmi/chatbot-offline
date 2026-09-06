@@ -273,3 +273,26 @@ offline_verify() {
         "$(offline_gateway_url)" \
         "$(offline_runtime_dir)/secrets/chat_api_key"
 }
+
+offline_media_accept() {
+    local figure_dir
+
+    figure_dir="$(
+        offline_env_value FIGURE_DIR
+    )"
+
+    if [[ "$figure_dir" != /* ]]; then
+        figure_dir="$(
+            readlink -f \
+                "$OFFLINE_ROOT/$figure_dir"
+        )"
+    fi
+
+    python3 \
+        "$OFFLINE_ROOT/offline/lib/check.py" \
+        media \
+        "$(offline_gateway_url)" \
+        "$(offline_runtime_dir)/secrets/chat_api_key" \
+        "$figure_dir" \
+        "$OFFLINE_ROOT/data/figures/heatmap1.png"
+}
