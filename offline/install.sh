@@ -197,6 +197,13 @@ if [[ ! -f .env ]]; then
         "Created .env from .env.example"
 fi
 
+chown \
+    "$DEPLOY_UID:$DEPLOY_GID" \
+    "$ROOT/.env"
+
+chmod 600 \
+    "$ROOT/.env"
+
 MODEL_STORE="${CHATBOT_MODEL_STORE:-$DEPLOY_HOME/.local/share/chatbot/models}"
 
 STATE_DIR="${CHATBOT_STATE_DIR:-$DEPLOY_HOME/.local/share/chatbot/state}"
