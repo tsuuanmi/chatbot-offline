@@ -31,6 +31,10 @@ offline_compose() {
     env \
         -u LLAMA_GPU_IMAGE \
         -u LLAMA_GPU_LAYERS \
+        -u LLAMA_GPU_LAYERS_DRAFT \
+        -u LLAMA_SPEC_TYPE \
+        -u LLAMA_SPEC_DRAFT_N_MAX \
+        -u MTP_MODEL_NAME \
         docker compose \
         --project-directory "$OFFLINE_ROOT" \
         --project-name "$(offline_project_name)" \
@@ -46,6 +50,10 @@ offline_gpu_compose() {
     env \
         -u LLAMA_GPU_IMAGE \
         -u LLAMA_GPU_LAYERS \
+        -u LLAMA_GPU_LAYERS_DRAFT \
+        -u LLAMA_SPEC_TYPE \
+        -u LLAMA_SPEC_DRAFT_N_MAX \
+        -u MTP_MODEL_NAME \
         docker compose \
         --project-directory "$OFFLINE_ROOT" \
         --project-name "$(offline_project_name)" \

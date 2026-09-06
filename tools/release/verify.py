@@ -5,6 +5,7 @@ from __future__ import annotations
 import platform
 from pathlib import Path
 
+from .env import read_env
 from .manifest import (
     read_manifest,
     verify_checksums,
@@ -143,6 +144,85 @@ def verify_network_boundary(
 
 
 
+def verify_manifest_config(
+    root: Path,
+    manifest: dict[str, str],
+) -> None:
+    runtime = read_env(
+        root / ".env.example",
+    )
+
+    versions = read_env(
+        root / "versions.env",
+    )
+
+    sources = (
+        (
+            "llama_model",
+            runtime,
+            "LLAMA_MODEL_NAME",
+        ),
+        (
+            "mtp_model",
+            runtime,
+            "MTP_MODEL_NAME",
+        ),
+        (
+            "llama_spec_type",
+            runtime,
+            "LLAMA_SPEC_TYPE",
+        ),
+        (
+            "llama_spec_draft_n_max",
+            runtime,
+            "LLAMA_SPEC_DRAFT_N_MAX",
+        ),
+        (
+            "embedding_model",
+            versions,
+            "EMBEDDING_MODEL",
+        ),
+        (
+            "embedding_dimension",
+            versions,
+            "EMBEDDING_DIMENSION",
+        ),
+    )
+
+    for (
+        manifest_key,
+        source,
+        source_key,
+    ) in sources:
+        expected = source.get(
+            source_key,
+            "",
+        ).strip()
+
+        if not expected:
+            raise RuntimeError(
+                "release configuration "
+                f"is missing: {source_key}"
+            )
+
+        actual = manifest.get(
+            manifest_key,
+            "",
+        )
+
+        if actual != expected:
+            raise RuntimeError(
+                "release manifest mismatch: "
+                f"{manifest_key} "
+                f"expected={expected!r} "
+                f"actual={actual!r}"
+            )
+
+    print(
+        "PASS release manifest configuration"
+    )
+
+
 def require_bundled_model(
     root: Path,
     manifest: dict[str, str],
@@ -205,6 +285,11 @@ def verify_cpu(
     manifest = read_manifest(
         root
         / "BUNDLE-MANIFEST.txt"
+    )
+
+    verify_manifest_config(
+        root,
+        manifest,
     )
 
     require_bundled_model(
