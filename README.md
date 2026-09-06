@@ -1,130 +1,96 @@
 # Chatbot
 
-Clean, production-oriented offline chatbot for forensic genetics.
+Production-oriented, fully offline chatbot for Vietnamese forensic genetics and DNA workflows.
 
-## Goals
+The runtime is Docker-based, CPU-capable by default, and can automatically use an NVIDIA GPU when CUDA is available. All inference, retrieval, persistence, authentication, image handling, and API traffic remain local.
 
-- Fully functional without Internet access at runtime.
-- CPU is the reference and mandatory execution path.
-- NVIDIA GPU acceleration is optional; CPU remains mandatory.
-- Supports Ubuntu and Red Hat Enterprise Linux.
-- Reproducible Docker-based deployment.
-- Minimal number of long-running services.
-- Explicit, testable forensic domain and risk policies.
-- Local retrieval with approved evidence and citations.
-- Simple offline installation and minimal operations: start, stop, restart, status, logs, reindex, verify, and optional GPU enable/disable.
+## Quick Start
 
-## Non-goals
+A first installation uses two files:
 
-The core system does not require:
+- `chatbot-<version>.zip` — application runtime
+- `chatbot-models-gemma4-e2b-v2.zip` — model bundle
 
-- web search
-- MCP
-- autonomous agents
-- external cloud APIs
-- plugin marketplaces
-- workflow editors
-- Redis
-- Celery
-- Kubernetes
-- a bundled general-purpose chat UI
-
-These may only be introduced later if a concrete requirement justifies them.
-
-## Migration policy
-
-`../chatbot` is a reference implementation, not the base of this repository.
-
-Code, configuration, data, or assets from the old repository are copied only
-when a milestone requires them. Bulk copying is not allowed.
-
-Each migrated component should be simplified for the new architecture instead
-of preserving obsolete compatibility or infrastructure.
-
-## Development Roadmap
-
-The project is being built incrementally toward a production-ready, fully offline Vietnamese forensic genetics chatbot.
-
-Core architectural requirements:
-
-* Fully offline runtime.
-* CPU-first reference implementation; GPU acceleration is optional.
-* llama.cpp for local inference with Gemma 4 MTP speculative decoding.
-* PostgreSQL + pgvector for persistence and semantic retrieval.
-* FastEmbed / ONNX CPU embeddings.
-* PostgreSQL full-text search + semantic search fused with RRF.
-* Versioned database migrations only; application startup must not perform DDL.
-* Secrets must be supplied through mounted secret files and must never be committed or logged.
-* RHEL deployments must support SELinux Enforcing.
-* Nginx is the LAN-facing gateway; production binds to all host interfaces by default and the installer reports the detected LAN address.
-* Exactly one `chatbot` Compose project is active at a time.
-* A runtime release contains both CPU and NVIDIA GPU images with one shared release version.
-* Model files are distributed independently from runtime releases and reused across code updates.
-* Persistent models and secrets live outside versioned runtime release directories.
-* Conversation history is context only and must never be treated as authoritative evidence.
-* High-risk policy always takes precedence over prepared answers and generation.
-* Conversation ownership must come from authenticated identity, never from a client-supplied owner ID.
-
-### Milestone Status
-
-* M0 — Clean repository: COMPLETE
-* M1 — Minimal Hayhooks / Haystack runtime: COMPLETE
-* M2 — llama.cpp CPU chat runtime: COMPLETE
-* M3 — PostgreSQL + pgvector: COMPLETE
-* M4 — FastEmbed CPU + hybrid retrieval: COMPLETE
-* M5 — Forensic domain, risk, evidence, prepared answers, citations and RAG: COMPLETE
-* M6A — Conversation persistence and bounded conversational context: COMPLETE
-* M6B.1 — Offline API authentication: COMPLETE
-* M6B.2 — Authenticated conversation ownership: COMPLETE
-* M6B.3 — Authentication hardening: COMPLETE
-* M6C — Streaming API: COMPLETE
-* M7 — Nginx and production hardening: COMPLETE
-* M8 — Fully offline distribution for Ubuntu and RHEL: IN PROGRESS — Ubuntu validated; RHEL/SELinux acceptance pending
-* M9 — Optional NVIDIA GPU acceleration: COMPLETE
-* M10 — Final cleanup and release acceptance: IN PROGRESS — internal gates complete; RHEL/SELinux acceptance pending
-
-### Current Acceptance Commands
-
-Source runtime acceptance:
+Place both ZIP files in the same directory. Extract only the runtime ZIP:
 
 ```bash
+unzip chatbot-<version>.zip
+cd chatbot-<version>
+sudo make install
+```
+
+The installer automatically:
+
+- verifies release checksums and architecture
+- loads all Docker images without Internet access
+- installs or reuses the required model bundle
+- selects NVIDIA GPU when Docker exposes CUDA, otherwise CPU
+- preserves persistent credentials and PostgreSQL data
+- initializes or reuses configured figures
+- applies database migrations
+- indexes approved knowledge
+- configures Docker startup after reboot
+- configures LAN-only firewall access to the public gateway
+- starts and verifies the deployment
+
+After installation:
+
+```bash
+make status
 make verify
 make accept
-make recovery
 ```
 
-Build the universal offline runtime release:
+The installer prints both URLs when LAN exposure is enabled:
+
+```text
+local=http://127.0.0.1:18080
+network=http://<LAN-IP>:18080
+```
+
+## Host Requirements
+
+The target host currently needs Docker Engine, the Docker Compose plugin, Python 3, `make`, and `unzip` installed before deployment.
+
+Ubuntu x86_64 is the validated production host. NVIDIA GPU acceleration is optional. CPU remains a supported execution path.
+
+Real RHEL-compatible host validation with SELinux Enforcing is future work and is not a blocker for the validated Ubuntu release.
+
+## Public API
+
+Public endpoints:
+
+```text
+GET    /live
+GET    /ready
+POST   /api/v1/chat
+POST   /api/v1/chat/stream
+DELETE /api/v1/conversations/{conversation_id}
+```
+
+`/live` does not require authentication. Other public application endpoints require a Bearer API key.
+
+The persistent client API key is stored at:
+
+```text
+~/.local/share/chatbot/state/secrets/chat_api_key
+```
+
+Example:
 
 ```bash
-make release
+API_KEY="$(cat "$HOME/.local/share/chatbot/state/secrets/chat_api_key")"
+
+curl -sS \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"message":"STR là gì?"}' \
+  http://127.0.0.1:18080/api/v1/chat
 ```
 
-Build the independent model package only when the model set changes:
+See [docs/API.md](docs/API.md) for the complete public API contract.
 
-```bash
-make release-models
-```
-
-Target installation:
-
-```bash
-make install
-```
-
-The target must already provide Docker Engine, the Docker Compose plugin, Python 3, `make`, and ZIP extraction support. Installing those host prerequisites fully offline is future work and is not part of the current runtime artifact.
-
-The installer:
-
-- verifies the runtime artifact and architecture
-- reuses or installs the required model package
-- loads all runtime images locally without network pulls
-- automatically selects NVIDIA GPU when Docker exposes CUDA, otherwise CPU
-- preserves PostgreSQL, models, and secrets across runtime upgrades
-- replaces the previous `chatbot` containers in place
-- removes superseded chatbot image versions after successful installation
-- binds the gateway to `0.0.0.0` by default and reports local and LAN URLs
-
-Target operations:
+## Common Operations
 
 ```bash
 make start
@@ -132,37 +98,54 @@ make stop
 make restart
 make status
 make logs
-make reindex
 make verify
 make accept
-make gpu
 make cpu
+make gpu
+make reindex
+make reindex-figures
 ```
 
-### Production Safety Invariants
+See [docs/OPERATIONS.md](docs/OPERATIONS.md) for details.
 
-1. Risk classification runs before prepared-answer selection.
-2. High-risk requests without authoritative evidence return a deterministic evidence-limitation response and do not call the LLM.
-3. Conversation history is not evidence.
-4. Historical citations are not automatically valid for a new request.
-5. Conversation history must never downgrade current risk.
-6. Only explicit `[cite:ID]` tokens are interpreted as citations.
-7. Authentication credentials must not be pipeline request parameters.
-8. Conversation owner identity must be derived from authentication.
-9. Runtime pipeline deployment and undeployment must not be exposed in production.
-10. External HTTP access must enter through Nginx; direct chatbot host access remains loopback-only.
+## Persistent Data
 
-### Deliberately Excluded From Core
+```text
+~/.local/share/chatbot/
+├── models/
+├── figures/
+└── state/
+    └── secrets/
+```
 
-The core application should remain focused and should not add the following without a concrete requirement and architectural review:
+PostgreSQL data is stored in the Docker volume:
 
-* MCP
-* autonomous agents
-* Internet or web-browsing tools
-* Redis
-* Celery
-* generic admin platforms
-* Open WebUI
-* generic workflow engines
+```text
+chatbot_postgres_data
+```
 
-Update this section whenever a milestone changes status or a major architectural or production constraint changes.
+Runtime release directories are disposable. Code updates do not rotate the API key or require models to be copied again when the required model bundle is already installed.
+
+## Runtime Architecture
+
+Exactly four long-running containers form one Compose project named `chatbot`:
+
+- `chatbot-proxy` — Nginx public gateway
+- `chatbot-app` — application/API
+- `chatbot-llama` — llama.cpp inference
+- `chatbot-postgres` — PostgreSQL + pgvector
+
+Migration and indexing services are one-shot tools, not permanent services.
+
+## Documentation
+
+- [Installation](docs/INSTALL.md)
+- [Operations and upgrades](docs/OPERATIONS.md)
+- [Public API](docs/API.md)
+- [Release checklist](docs/RELEASE_CHECKLIST.md)
+- [Roadmap](docs/ROADMAP.md)
+- [Milestones](docs/MILESTONES.md)
+
+## Core Safety Invariants
+
+Risk classification runs before prepared answers or generation. High-risk requests without authoritative evidence return deterministic evidence limitation. Conversation history is context, never evidence. Authenticated identity owns conversations. Internal deployment and Hayhooks management endpoints are not exposed through the production gateway.

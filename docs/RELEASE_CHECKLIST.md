@@ -1,76 +1,39 @@
 # Release Acceptance Checklist
 
-CPU execution is mandatory. NVIDIA GPU acceleration is optional and must not change application behavior.
+This checklist describes the current universal offline release.
 
-Only one `chatbot` deployment is intended to be active on a host at a time.
+CPU support is required. NVIDIA GPU acceleration is optional and must not change application behavior.
 
-## Source acceptance
+## Source Gate
 
-Required before building a release:
-
-- clean committed Git HEAD
-- unit tests pass
-- runtime acceptance passes
-- persistent-state recovery passes
-- runtime secret audit passes
-- Python and shell syntax checks pass
-- no obsolete CPU-bundle/GPU-add-on release implementation remains
-
-Canonical commands:
+Before creating a runtime artifact:
 
 ```bash
 make test
 make verify
 make accept
 make recovery
+git diff --check
 git status --short
 ```
 
-## Universal runtime artifact
+Build a release only from a clean committed HEAD.
 
-Build only from a clean committed HEAD:
+## Runtime Artifact
 
 ```bash
 make release
 ```
 
-The runtime artifact is one ZIP:
+Artifact:
 
 ```text
 chatbot-<version>.zip
 ```
 
-It contains both CPU and NVIDIA execution paths and must include:
+It contains the application, CPU llama.cpp image, NVIDIA llama.cpp image, PostgreSQL image, Nginx image, Compose files, migrations, approved data, offline tooling, checksums, and release manifest.
 
-- chatbot image
-- llama.cpp CPU image
-- llama.cpp NVIDIA GPU image
-- PostgreSQL + pgvector image
-- Nginx image
-- Compose configuration
-- database migrations
-- knowledge indexing tooling
-- approved documents
-- offline installation and management tooling
-- release manifest
-- SHA256 checksums
-
-It must not contain:
-
-- GGUF model files
-- private `.env`
-- runtime secrets
-- persisted PostgreSQL data
-
-All chatbot runtime images use the same release version:
-
-```text
-chatbot-app:<version>
-chatbot-llama-cpu:<version>
-chatbot-llama-gpu:<version>
-chatbot-postgres:<version>
-chatbot-nginx:<version>
-```
+It must not contain private secrets, PostgreSQL data, or GGUF model files.
 
 Verify:
 
@@ -78,225 +41,118 @@ Verify:
 python3 -m tools.release verify runtime dist/chatbot-<version>.zip
 ```
 
-## Independent model artifact
+## Model Artifact
 
-Models have an independent lifecycle and are rebuilt only when the required model set changes.
-
-Build:
+Rebuild only when the model contract changes:
 
 ```bash
 make release-models
 ```
 
-Artifact:
-
-```text
-chatbot-models-<model-version>.zip
-```
-
-It contains:
+Current model bundle contains:
 
 - main Gemma GGUF
-- Gemma MTP GGUF
+- multimodal projector GGUF
+- Gemma MTP draft GGUF
 - model manifest
 - SHA256 checksums
 
-The model package uses ZIP64 stored entries rather than recompressing GGUF files.
-
-Verify:
-
-```bash
-python3 -m tools.release verify models dist/chatbot-models-<model-version>.zip
-```
-
-The runtime manifest identifies the exact required model bundle and model filenames. Missing or mismatched models must fail clearly rather than silently using another model version.
-
-## Persistent target state
-
-Versioned runtime release directories are disposable.
-
-Persistent models and secrets are stored outside them:
+Artifact:
 
 ```text
-~/.local/share/chatbot/
-├── models/
-└── state/
-    └── secrets/
+chatbot-models-gemma4-e2b-v2.zip
 ```
 
-The default PostgreSQL data volume is:
+## Fresh Target Install
 
-```text
-chatbot_postgres_data
-```
-
-Runtime code upgrades must preserve:
-
-- installed model bundle
-- authentication registry
-- client API key
-- llama API key
-- PostgreSQL password
-- PostgreSQL data volume
-
-## Fresh offline installation
-
-The target currently assumes these host prerequisites already exist:
-
-- Docker Engine
-- Docker Compose plugin
-- Python 3
-- make
-- ZIP extraction support
-
-Fully offline operating-system/bootstrap dependency installation is future work and is not part of the current runtime artifact.
-
-For the first deployment, copy the runtime ZIP and required model ZIP to the target. Extract the runtime ZIP and run:
+Place the runtime ZIP and model ZIP together, extract the runtime ZIP, then:
 
 ```bash
-make install
+sudo make install
 ```
 
-Required behavior:
+Required result:
 
-1. verify runtime checksums and architecture
-2. install or reuse the exact required model bundle
-3. load all Docker images from local archives
-4. perform no network pull or download
-5. automatically select NVIDIA GPU when Docker exposes CUDA, otherwise CPU
-6. allow explicit CPU or GPU selection
-7. generate or reuse persistent secrets
-8. migrate PostgreSQL
-9. build the knowledge index
-10. start exactly one `chatbot` runtime
-11. verify the authenticated deployment
-12. report local and detected LAN URLs
+- all five Docker images load without network pulls
+- correct model package installs or is reused
+- accelerator auto-selection succeeds
+- persistent credentials initialize or are reused
+- database migrations succeed
+- 105 approved documents are indexed
+- configured figure cache succeeds
+- exactly four long-running services become healthy
+- Docker boot startup is enabled
+- persistent LAN firewall is installed
+- `OFFLINE VERIFY PASS`
+- `OFFLINE INSTALL PASS`
 
-The production gateway binds to `0.0.0.0` by default. A local-only deployment may explicitly override the bind address.
+After installation, `.env` and persistent deployment state must remain accessible to the deployment user rather than being owned exclusively by root.
 
-## Installer rerun and code-only upgrade
+## Persistent State Gate
 
-Running `make install` again must be idempotent.
+Runtime upgrades must preserve:
 
-When the required model bundle is already installed, the model ZIP is not required for a code-only update.
+- `~/.local/share/chatbot/models/`
+- `~/.local/share/chatbot/figures/`
+- `~/.local/share/chatbot/state/secrets/`
+- `chatbot_postgres_data`
 
-An in-place runtime upgrade must:
+The client API key must remain byte-identical across normal runtime upgrades, CPU/GPU switching, Docker restart, and host reboot.
 
-- reuse the persistent model store
-- reuse persistent secrets
-- reuse the PostgreSQL volume
-- stop and remove the previous chatbot containers
-- start the new runtime using the same `chatbot` Compose project
-- leave exactly four long-running containers
-- verify the new runtime before final completion
-- remove superseded chatbot image versions after successful installation
-
-Validated long-running container names:
-
-```text
-chatbot-app
-chatbot-llama
-chatbot-postgres
-chatbot-proxy
-```
-
-Ubuntu in-place upgrade acceptance has verified that secrets and the PostgreSQL volume remain unchanged while the active runtime and image version are replaced.
-
-## CPU and NVIDIA acceptance
-
-The same runtime artifact supports both execution modes.
-
-Canonical target commands:
+## Target Acceptance
 
 ```bash
-make cpu
+make status
 make verify
-
-make gpu
-make verify
+make accept
 ```
 
-GPU mode must verify an actual CUDA device through Docker. Forced GPU mode must fail clearly when CUDA is unavailable. Automatic mode falls back to CPU.
+Acceptance must verify four healthy services, non-root/read-only runtime hardening, private internal boundaries, Docker boot enablement, `restart: unless-stopped`, persistent LAN firewall configuration, media behavior, and the public API.
 
-CPU fallback and NVIDIA GPU enable acceptance are complete on the validated Ubuntu/NVIDIA host.
+## Public API Gate
 
-## Persistent-state recovery
+Required production behavior:
 
-Required behavior:
+- `/live` returns 200 without authentication
+- `/ready` returns 401 without authentication
+- authenticated `/ready` returns 200
+- authenticated `/api/v1/chat` returns the direct public DTO
+- streaming works through `/api/v1/chat/stream`
+- conversation deletion uses UUID ownership
+- internal Hayhooks/runtime-management endpoints return 404 through Nginx
 
-1. persist an authenticated conversation
-2. restart PostgreSQL
-3. restart chatbot
-4. continue the same conversation
-5. recover previous history
-6. preserve turn numbering
-7. preserve contextual safety behavior
+## Restart / Reboot Gate
 
-Canonical source command:
+Docker restart acceptance must demonstrate that no manual `make start` is required:
 
 ```bash
-make recovery
+sudo systemctl restart docker.service
 ```
 
-Persistent-state recovery acceptance is complete.
+Required after Docker returns:
 
-## Runtime performance record
-
-Performance values are regression references, not universal SLAs.
-
-Validated CPU MTP baseline:
-
-- median stream rate: 143.9 chars/s
-- two-client aggregate stream rate: 143.4 chars/s
-- two-client median request latency: 14.28 s
-- two-client p95 request latency: 21.01 s
-- two-client median TTFT: 3.33 s
-
-## MTP configuration
-
-Current production configuration:
-
-- `MTP_MODEL_NAME=mtp-gemma-4-E2B-it.gguf`
-- `LLAMA_SPEC_TYPE=draft-mtp`
-- `LLAMA_SPEC_DRAFT_N_MAX=2`
-- CPU draft offload: 0 GPU layers
-- NVIDIA draft offload: 99 GPU layers
-
-The MTP model is distributed in the independent model package, not the runtime ZIP.
-
-## RHEL and SELinux acceptance
-
-This gate must run on a real RHEL-compatible host with SELinux Enforcing.
-
-Required:
-
-- RHEL, Rocky Linux, AlmaLinux, or supported compatible host
-- SELinux reports `Enforcing`
-- bind mounts operate with the required SELinux labels
-- fresh offline installation passes
-- installer rerun passes
-- code-only in-place upgrade passes
+- all four Chatbot containers automatically become healthy
+- `chatbot-firewall.service` is active
+- `DOCKER-USER` contains the Chatbot firewall jump
+- LAN allow/drop rules are restored
 - `make verify` passes
 - `make accept` passes
-- restart passes
-- CPU mode passes
-- NVIDIA mode passes when supported by that host
-- no workaround disables SELinux enforcement
+- API key hash is unchanged
 
-This gate is currently **PENDING**.
+## Network Gate
 
-Do not mark multi-platform release acceptance complete based on Ubuntu-only testing.
+The validated default gateway is TCP/18080 on the detected LAN address.
 
-## Release completion
+The persistent firewall allows the detected physical LAN CIDR and drops other source networks for the Chatbot published port.
 
-Internal implementation and Ubuntu release acceptance are complete.
+VPN or Tailscale networks are not automatically included in that LAN policy.
 
-A multi-platform production release is complete only when:
+## Ubuntu Release Status
 
-- final runtime artifact is built from the final clean HEAD
-- final runtime provenance and checksums pass
-- required model package verifies independently
-- Ubuntu fresh installation and in-place upgrade acceptance pass
-- CPU and optional NVIDIA paths pass
-- real RHEL + SELinux Enforcing acceptance passes
-- documentation matches validated behavior
+Ubuntu x86_64 release acceptance is COMPLETE, including fresh/upgrade installation, CPU/GPU parity, multimodal behavior, persistent credentials, public API, LAN firewall, Docker restart recovery, and stable API key.
+
+## RHEL / SELinux
+
+Real RHEL-compatible host validation with SELinux Enforcing is future work.
+
+It must not be represented as completed until tested on a real host, and SELinux must not be disabled as a workaround.

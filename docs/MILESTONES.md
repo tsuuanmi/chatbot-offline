@@ -1,127 +1,35 @@
 # Milestones
 
-## M0 - Clean repository
+## Completed
 
-Establish repository boundaries and architecture rules.
+- M0 — Clean repository
+- M1 — Minimal Hayhooks / Haystack runtime
+- M2 — llama.cpp CPU chat runtime
+- M3 — PostgreSQL + pgvector
+- M4 — FastEmbed CPU + hybrid retrieval
+- M5 — Forensic domain, risk, evidence, prepared answers, citations, and RAG
+- M6A — Conversation persistence and bounded context
+- M6B.1 — Offline API authentication
+- M6B.2 — Authenticated conversation ownership
+- M6B.3 — Authentication hardening
+- M6C — Streaming API
+- M7 — Nginx and production hardening
+- M8.1 — Universal offline runtime bundle
+- M8.2 — Offline installer
+- M8.3 — Offline operations
+- M9 — Optional NVIDIA GPU acceleration
+- M10 — Cleanup, universal release architecture, Ubuntu release acceptance, MTP
+- M11 — Multimodal configured figures and transient image input
+- Deployment UX / Host Hardening — stable public API, persistent API key, LAN firewall, Docker boot startup, reboot recovery
 
-Pass criteria:
-- New independent Git repository exists.
-- No application code has been copied from the previous chatbot.
-- Repository contains only baseline documentation/configuration.
-- Docker host requirements are known.
+## Current Validated Release
 
-## M1 - Minimal Hayhooks service
+Ubuntu x86_64 has completed runtime installation, upgrade, CPU/GPU parity, multimodal acceptance, public API acceptance, persistent-state acceptance, LAN firewall acceptance, Docker restart recovery, and stable API-key acceptance.
 
-Run Hayhooks in Docker with one trivial local pipeline.
+The runtime architecture uses one Compose project named `chatbot`, four long-running containers, one independently versioned model package, stable persistent stores, and one public Nginx gateway.
 
-No LLM.
-No database.
-No RAG.
+## Future Work
 
-Purpose:
-Validate the application server and pipeline deployment model.
+Real RHEL-compatible host validation with SELinux Enforcing remains future work.
 
-## M2 - CPU LLM
-
-Add llama.cpp as an independent service.
-
-Requirements:
-- CPU-only reference configuration.
-- OpenAI-compatible communication.
-- Streaming smoke test.
-- No dependency on GPU.
-
-## M3 - PostgreSQL + pgvector
-
-Add a single persistent data service.
-
-Requirements:
-- PostgreSQL.
-- pgvector.
-- migrations.
-- health/readiness checks.
-
-## M4 - CPU retrieval
-
-Add local embedding and retrieval.
-
-Candidates:
-- FastEmbed / ONNX Runtime.
-- pgvector semantic retrieval.
-- PostgreSQL full-text search.
-- hybrid retrieval.
-
-Benchmark against the previous implementation before accepting it.
-
-## M5 - Forensic behavior
-
-Port only required business logic:
-
-- prepared answers
-- figure handling where required
-- domain classification
-- high-risk classification
-- approved-evidence policy
-- evidence limitation
-- citations
-
-All behavior must be covered by tests.
-
-## M6 - Chat application behavior
-
-Add:
-
-- conversation history
-- client ownership
-- authentication
-- streaming API
-- request capacity control
-
-## M7 - Production deployment
-
-Add:
-
-- Nginx
-- security hardening
-- health/readiness
-- resource limits
-- structured local logging
-- backup/restore
-
-## M8 - Offline distribution
-
-Create:
-
-- offline Docker image bundle
-- Python/application dependency bundle where required
-- model bundle
-- integrity hashes
-- installer
-- updater
-- rollback support
-
-Validate on:
-- Ubuntu
-- RHEL with SELinux Enforcing
-
-## M9 - Optional GPU acceleration
-
-Add automatic or explicit acceleration without changing application behavior.
-
-CPU remains the required baseline.
-
-## M10 - Production acceptance
-
-Validate:
-
-- clean install
-- offline install
-- upgrade
-- rollback
-- backup/restore
-- restart/reboot
-- CPU performance
-- GPU performance
-- concurrent clients
-- failure handling
-- long-running stability
+Fully offline installation of operating-system prerequisites is also future work; the runtime artifact assumes Docker Engine, Docker Compose, Python 3, make, and unzip are already installed.

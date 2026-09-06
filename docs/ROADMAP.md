@@ -1,405 +1,80 @@
-# Chatbot Roadmap
+# Roadmap
 
 ## Mission
 
-Build a clean, production-ready, fully offline Vietnamese chatbot for forensic genetics and DNA workflows.
+Maintain a clean, production-oriented, fully offline Vietnamese forensic genetics chatbot with deterministic safety policy, local evidence retrieval, authenticated conversations, multimodal support, and reproducible deployment.
 
-CPU-only behavior is the reference baseline. GPU acceleration is optional and must never change policy, retrieval, citation, safety, authentication, ownership, or output semantics.
+CPU remains a supported reference execution path. NVIDIA GPU acceleration may improve performance but must not alter API, policy, retrieval, authentication, ownership, evidence handling, or output semantics.
 
-Target platforms:
-
-- Ubuntu
-- RHEL with SELinux Enforcing
-
----
-
-## Core Architecture
+## Current Architecture
 
 Long-running services:
 
-1. Nginx — from M7 onward
-2. Chatbot / Hayhooks
+1. Nginx public gateway
+2. Chatbot application
 3. llama.cpp
 4. PostgreSQL + pgvector
 
-One-shot services:
+One-shot tools handle migrations, knowledge indexing, configured-figure indexing, installation, and validation.
 
-- database migrations
-- knowledge indexing
-- installation / validation utilities
+Runtime releases and model releases have independent lifecycles.
 
-Key principles:
+Persistent deployment state lives outside versioned runtime directories.
 
-- fully offline runtime
-- CPU-first
-- llama.cpp primary inference
-- PostgreSQL + pgvector
-- FastEmbed / ONNX CPU embeddings
-- PostgreSQL keyword retrieval
-- RRF hybrid fusion
-- versioned migrations only
-- no startup DDL
-- secrets through mounted files
-- SELinux stays Enforcing
-- Nginx is the only configurable LAN-facing HTTP gateway from M7 onward
+## Completed Scope
 
----
+The current Ubuntu release includes:
+
+- fully offline runtime operation
+- CPU and NVIDIA GPU execution
+- Gemma 4 main model, multimodal projector, and MTP draft model
+- PostgreSQL + pgvector persistence
+- FastEmbed CPU embeddings
+- PostgreSQL full-text + semantic retrieval fused with RRF
+- prepared answers and approved-evidence RAG
+- deterministic forensic domain and high-risk policy
+- validated citations
+- authenticated conversation ownership
+- bounded one-sitting conversation context
+- non-streaming and SSE public APIs
+- configured figures with persistent description cache
+- transient base64 image input
+- universal offline runtime ZIP
+- independent model ZIP
+- persistent models, figures, secrets, and PostgreSQL data
+- stable API key across upgrades and reboot
+- automatic CPU/GPU selection
+- Nginx LAN gateway
+- persistent Docker `DOCKER-USER` LAN firewall
+- Docker startup and automatic runtime recovery after restart/reboot
+- Ubuntu release acceptance
+
+## Production Public API
+
+```text
+GET    /live
+GET    /ready
+POST   /api/v1/chat
+POST   /api/v1/chat/stream
+DELETE /api/v1/conversations/{conversation_id}
+```
+
+Framework/runtime-management endpoints are internal and are not part of the public contract.
 
 ## Safety Invariants
 
-- Risk policy runs before prepared answers.
-- High-risk requests without authoritative evidence return deterministic evidence limitation.
-- High-risk requests must not call the LLM when authoritative evidence is unavailable.
-- Conversation history is context, not evidence.
-- Historical citations are not automatically valid for the current turn.
-- History must never downgrade current risk.
-- Only `[cite:ID]` is treated as a citation token.
-- Conversation ownership must come from authenticated identity.
-- Clients must never supply trusted `owner_id`.
-- Authentication secrets must never appear in pipeline request parameters or logs.
+Risk classification runs before prepared answers. High-risk requests without authoritative evidence do not call the LLM. Conversation history is context, not evidence. Historical citations are not automatically valid for a new turn. Authenticated identity determines conversation ownership. Raw image input cannot bypass domain or risk policy and is not persisted as base64 content.
 
----
+## Future Work
 
-# Milestones
+The following are useful future improvements but are not blockers for the validated Ubuntu release:
 
-## M0 — Clean Repository
+- real RHEL/Rocky/AlmaLinux acceptance with SELinux Enforcing
+- fully offline bootstrap of host OS prerequisites
+- TLS for deployments that are not on an isolated trusted LAN
+- an explicit policy for optional VPN/Tailscale API access when required
+- continued dependency and embedding reproducibility review
 
-Status: COMPLETE
+## Deliberately Excluded
 
-## M1 — Minimal Hayhooks / Haystack Runtime
-
-Status: COMPLETE
-
-## M2 — llama.cpp CPU Chat Runtime
-
-Status: COMPLETE
-
-## M3 — PostgreSQL + pgvector
-
-Status: COMPLETE
-
-## M4 — FastEmbed CPU + Hybrid Retrieval
-
-Status: COMPLETE
-
-## M5 — Forensic Domain, Risk, Evidence and RAG
-
-Status: COMPLETE
-
-Includes:
-
-- domain/risk routing
-- explicit high-risk rules
-- prepared answers
-- hybrid retrieval
-- evidence policy
-- citation validation
-- deterministic high-risk limitation
-- calibration suites
-
----
-
-## M6 — Conversation, Identity and API
-
-### M6A — Conversation Persistence and Context
-
-Status: COMPLETE
-
-Implemented:
-
-- client-generated conversation UUID
-- persistent PostgreSQL conversations
-- persistent turns
-- explicit transactions
-- advisory transaction locks
-- bounded history
-- bounded context size
-- citation stripping from historical answers
-- contextual follow-up handling
-- contextual high-risk protection
-- UUID API validation
-- stateless backward compatibility
-- restart persistence
-- concurrent turn allocation acceptance
-- readiness endpoint
-
-Acceptance:
-
-```text
-make verify
-make accept
-make recovery
-```
-
-### M6B — Authentication and Ownership
-
-Status: COMPLETE
-
-#### M6B.1 — Authentication Primitive
-
-Status: COMPLETE
-
-Requirements:
-
-* fully offline
-* FastAPI/Hayhooks middleware
-* Authorization header
-* mounted auth registry secret
-* timing-safe credential verification
-* no raw key in chatbot container config
-* missing auth -> 401
-* invalid auth -> 401
-* runtime deploy/undeploy disabled
-* restrictive CORS
-* authenticated request identity available through request context
-
-#### M6B.2 — Authenticated Ownership
-
-Status: COMPLETE
-
-Requirements:
-
-* remove static `CHAT_OWNER_ID`
-* derive owner from authenticated identity
-* owner A cannot access owner B conversations
-* client cannot submit `owner_id`
-* foreign conversation access must not leak ownership details
-
-#### M6B.3 — Auth Hardening
-
-Status: COMPLETE
-
-Requirements:
-
-* multi-user auth registry
-* rotation workflow
-* startup validation
-* malformed registry rejection
-* log audit
-* restart acceptance
-* offline acceptance
-
-### M6C — Streaming API
-
-Status: COMPLETE
-
-Goals:
-
-* streaming responses
-* cancellation handling
-* bounded buffering
-* atomic persistence only after completed generation
-* correct citation handling
-
----
-
-## M7 — Nginx and Production Hardening
-
-Status: COMPLETE
-
-
-Goals:
-
-* Nginx reverse proxy
-* rate limiting
-* request size limits
-* timeout policy
-* security headers
-* production CORS
-* non-root chatbot runtime
-* resource limits
-* graceful shutdown
-* liveness/readiness separation
-* log privacy
-* runtime management endpoints disabled
-
-No external exposure before M7 is complete.
-
----
-
-## M8 — Fully Offline Distribution
-
-Status: IN PROGRESS — implementation complete; real RHEL + SELinux Enforcing acceptance pending
-
-Goals:
-
-* one universal runtime ZIP containing both CPU and NVIDIA GPU runtime images
-* one independently versioned model ZIP containing the main and MTP GGUF files
-* pinned runtime images and model identities
-* checksums and clean-source provenance
-* one portable installation workflow for Ubuntu and RHEL
-* one active Compose project named `chatbot`
-* one shared release version across all chatbot runtime images
-* persistent model store reused across code releases
-* persistent secret store reused across code releases
-* persistent PostgreSQL volume reused across code releases
-* in-place replacement of the previous chatbot runtime
-* removal of superseded chatbot image versions after successful upgrade
-* automatic CPU/NVIDIA selection with explicit CPU/GPU overrides
-* automatic LAN IPv4 discovery for the displayed network URL
-* SELinux Enforcing-safe deployment
-* no network pulls during installation
-* minimal offline operations: start, stop, restart, status, logs, reindex, verify, accept, GPU enable, and CPU fallback
-* safe refusal when persistent database state exists but credentials are missing
-
----
-
-M8.1 — offline runtime bundle: COMPLETE
-
-M8.2 — fresh offline installation: COMPLETE
-
-M8.3 — offline operations: COMPLETE
-
-Ubuntu platform acceptance: COMPLETE
-
-RHEL + SELinux Enforcing acceptance: PENDING
-
-## M9 — Optional GPU
-
-Status: COMPLETE
-
-Requirements:
-
-* optional NVIDIA CUDA profile: COMPLETE
-* CPU fallback remains available: COMPLETE
-* identical behavioral acceptance: COMPLETE
-* measurable performance benefit: COMPLETE
-* universal runtime artifact includes both CPU and NVIDIA GPU execution paths: COMPLETE
-
-Pre-MTP M9 reference measurement on Quadro RTX 5000:
-
-* CPU median total latency: 15.51 s
-* GPU median total latency: 2.97 s
-* total latency speedup: 5.22x
-* CPU median stream rate: 105.9 chars/s
-* GPU median stream rate: 548.2 chars/s
-* stream-rate speedup: 5.18x
-
-The CPU runtime remains the mandatory reference deployment.
-GPU acceleration is optional and does not alter API, policy,
-retrieval, authentication, or streaming semantics.
-
----
-
-## M10 — Final Cleanup and Release Acceptance
-
-Status: IN PROGRESS — internal release gates complete; real RHEL + SELinux Enforcing acceptance pending
-
-Completed:
-
-* dead-code and tooling canonicalization
-* dependency audit
-* runtime secret audit
-* Ubuntu acceptance
-* CPU performance baseline
-* concurrency baseline
-* restart and persistent-state recovery acceptance
-* clean release artifact provenance verification
-* universal CPU+GPU runtime artifact verification
-* independent model artifact verification
-* runtime/model separation verification
-* fresh offline installation acceptance
-* installer rerun/idempotence acceptance
-* code-only update with model reuse acceptance
-* persistent secrets across runtime versions acceptance
-* persistent PostgreSQL volume across runtime versions acceptance
-* single active `chatbot` runtime acceptance
-* superseded image cleanup acceptance
-* offline restart acceptance
-* NVIDIA GPU enable acceptance
-* CPU fallback acceptance
-* Gemma 4 MTP speculative decoding
-* production release checklist
-
-Pending external gate:
-
-* real RHEL-compatible host acceptance with SELinux Enforcing
-
-MTP release configuration:
-
-* speculative type: `draft-mtp`
-* draft length: 2 tokens
-* CPU draft GPU layers: 0
-* NVIDIA draft GPU layers: 99
-* CPU remains the mandatory reference deployment
-
-Canonical CPU MTP performance baseline:
-
-* median stream rate: 143.9 chars/s
-* two-client aggregate stream rate: 143.4 chars/s
-* two-client median request latency: 14.28 s
-* two-client p95 request latency: 21.01 s
-* two-client median TTFT: 3.33 s
-
-These measurements describe the validated host and are not universal SLAs.
-
----
-
-## Current Acceptance Commands
-
-Source runtime regression:
-
-```bash
-make verify
-make accept
-make recovery
-```
-
-Performance:
-
-```bash
-python3 -m tools.bench stream --label LABEL
-python3 -m tools.bench concurrency --label LABEL --clients 2
-```
-
-Release artifacts:
-
-```bash
-make release
-make release-models
-
-python3 -m tools.release verify runtime dist/chatbot-VERSION.zip
-python3 -m tools.release verify models dist/chatbot-models-MODEL_VERSION.zip
-```
-
-Offline target:
-
-```bash
-make install
-make verify
-make accept
-make cpu
-make gpu
-```
-
-Runtime and model releases have independent lifecycles. A normal code update copies only the new runtime ZIP when the required model bundle is already installed.
-
----
-
-## Deliberately Excluded From Core
-
-Do not add without a concrete requirement:
-
-* MCP
-* autonomous agents
-* Internet tools
-* web browsing
-* Redis
-* Celery
-* generic admin platform
-* Open WebUI
-* generic workflow engine
-
----
-
-## Roadmap Maintenance Rule
-
-Update this file whenever:
-
-* milestone status changes
-* architecture invariants change
-* major dependencies change
-* acceptance requirements change
-* production constraints change
-
-GitHub HEAD plus this file should be treated as the project source of truth.
+Do not add generic infrastructure without a concrete product requirement. The core does not require autonomous agents, web browsing, MCP, Redis, Celery, Kubernetes, Open WebUI, or generic workflow engines.
