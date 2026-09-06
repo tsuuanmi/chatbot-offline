@@ -200,6 +200,10 @@ services:
       - "8080"
       - --ctx-size
       - ${LLAMA_CTX_SIZE:-8192}
+      - --batch-size
+      - "${LLAMA_BATCH_SIZE:-512}"
+      - --ubatch-size
+      - "${LLAMA_UBATCH_SIZE:-512}"
       - --threads
       - ${LLAMA_THREADS:-8}
       - --threads-batch
@@ -288,6 +292,7 @@ services:
       HISTORY_TURN_LIMIT: ${HISTORY_TURN_LIMIT:-6}
       HISTORY_CHAR_LIMIT: ${HISTORY_CHAR_LIMIT:-8000}
       CHAT_MESSAGE_MAX_CHARS: ${CHAT_MESSAGE_MAX_CHARS:-8000}
+      CHAT_GENERATION_QUEUE_TIMEOUT_SECONDS: ${CHAT_GENERATION_QUEUE_TIMEOUT_SECONDS:-5}
 
     volumes:
       - ./pipelines:/app/pipelines:ro,z

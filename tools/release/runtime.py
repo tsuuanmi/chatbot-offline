@@ -13,6 +13,8 @@ from .env import (
     require,
 )
 from .image import (
+    build as build_image,
+    inspect_label,
     require_image,
     save,
     tag,
@@ -23,7 +25,10 @@ from .manifest import (
     write_checksums,
     write_manifest,
 )
-from .source import inspect_source
+from .source import (
+    export_commit,
+    inspect_source,
+)
 
 
 def _copy_tree(
@@ -143,6 +148,11 @@ def build(
 ) -> Path:
     source = inspect_source()
 
+    if source.state != "clean":
+        raise RuntimeError(
+            "runtime release requires a clean committed Git HEAD"
+        )
+
     runtime = read_env(
         Path(".env.example")
     )
@@ -164,7 +174,7 @@ def build(
 
     require(
         values,
-        "CHATBOT_IMAGE",
+        "HAYHOOKS_IMAGE",
         "LLAMA_CPU_IMAGE",
         "LLAMA_GPU_IMAGE",
         "POSTGRES_IMAGE",
@@ -197,9 +207,6 @@ def build(
         )
 
     source_images = {
-        "CHATBOT_IMAGE": values[
-            "CHATBOT_IMAGE"
-        ],
         "LLAMA_CPU_IMAGE": values[
             "LLAMA_CPU_IMAGE"
         ],
@@ -245,6 +252,68 @@ def build(
         prefix=".chatbot-release-",
         dir=dist,
     ) as temporary:
+        temporary_root = Path(temporary)
+
+        build_context = (
+            temporary_root
+            / "source"
+        )
+
+        export_commit(
+            source.sha,
+            build_context,
+        )
+
+        committed_values = read_env(
+            build_context / "versions.env"
+        )
+
+        require(
+            committed_values,
+            "HAYHOOKS_IMAGE",
+            "EMBEDDING_MODEL",
+            "EMBEDDING_DIMENSION",
+        )
+
+        revision_label = (
+            "org.opencontainers.image.revision"
+        )
+
+        build_image(
+            release_images[
+                "CHATBOT_IMAGE"
+            ],
+            build_context,
+            build_args={
+                "HAYHOOKS_IMAGE": committed_values[
+                    "HAYHOOKS_IMAGE"
+                ],
+                "EMBEDDING_MODEL": committed_values[
+                    "EMBEDDING_MODEL"
+                ],
+                "EMBEDDING_DIMENSION": committed_values[
+                    "EMBEDDING_DIMENSION"
+                ],
+            },
+            labels={
+                revision_label: source.sha,
+            },
+        )
+
+        actual_revision = inspect_label(
+            release_images[
+                "CHATBOT_IMAGE"
+            ],
+            revision_label,
+        )
+
+        if actual_revision != source.sha:
+            raise RuntimeError(
+                "built chatbot image revision mismatch: "
+                f"expected={source.sha} "
+                f"actual={actual_revision}"
+            )
+
         root = (
             Path(temporary)
             / f"chatbot-{version}"
@@ -284,8 +353,6 @@ def build(
             (
                 "LLAMA_GPU_IMAGE="
                 f"{release_images['LLAMA_GPU_IMAGE']}\n"
-                "LLAMA_GPU_LAYERS=99\n"
-                "LLAMA_GPU_LAYERS_DRAFT=99\n"
             ),
             encoding="utf-8",
         )
@@ -382,6 +449,7 @@ def build(
                 "bundle_version": version,
                 "source_git_sha": source.sha,
                 "source_state": source.state,
+                "chatbot_image_revision": source.sha,
                 "architecture": (
                     source.architecture
                 ),
@@ -609,6 +677,23 @@ def verify(
         ):
             raise RuntimeError(
                 "release source is not clean"
+            )
+
+        source_git_sha = manifest.get(
+            "source_git_sha",
+            "",
+        )
+
+        if not source_git_sha:
+            raise RuntimeError(
+                "release source Git SHA is missing"
+            )
+
+        if manifest.get(
+            "chatbot_image_revision"
+        ) != source_git_sha:
+            raise RuntimeError(
+                "chatbot image revision does not match source Git SHA"
             )
 
         model_requirements = {

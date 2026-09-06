@@ -5,7 +5,9 @@ from __future__ import annotations
 import os
 import platform
 import subprocess
+import tarfile
 from dataclasses import dataclass
+from pathlib import Path, PurePosixPath
 
 
 @dataclass(
@@ -34,6 +36,61 @@ def git(
     ).stdout.strip()
 
 
+def export_commit(
+    sha: str,
+    destination: Path,
+) -> None:
+    destination.mkdir(
+        parents=True,
+        exist_ok=False,
+    )
+
+    archive = (
+        destination.parent
+        / f".chatbot-source-{sha[:12]}.tar"
+    )
+
+    try:
+        subprocess.run(
+            [
+                "git",
+                "archive",
+                "--format=tar",
+                "-o",
+                str(archive),
+                sha,
+            ],
+            check=True,
+        )
+
+        with tarfile.open(
+            archive,
+            mode="r:",
+        ) as source:
+            members = source.getmembers()
+
+            for member in members:
+                member_path = PurePosixPath(
+                    member.name
+                )
+
+                if (
+                    member_path.is_absolute()
+                    or ".." in member_path.parts
+                ):
+                    raise RuntimeError(
+                        "unsafe path in git archive: "
+                        f"{member.name}"
+                    )
+
+            source.extractall(
+                destination
+            )
+
+    finally:
+        archive.unlink(
+            missing_ok=True
+        )
 def inspect_source() -> Source:
     status = git(
         "status",

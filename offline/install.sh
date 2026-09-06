@@ -274,18 +274,31 @@ chown -R \
 
 INSTALL_ACCELERATOR="${CHATBOT_ACCELERATOR:-auto}"
 
+INSTALL_GPU_PROFILE="none"
+INSTALL_GPU_MEMORY_MIB="0"
+INSTALL_LLAMA_GPU_LAYERS="0"
+INSTALL_LLAMA_GPU_LAYERS_DRAFT="0"
+GPU_PROFILE_OUTPUT=""
+
 case "$INSTALL_ACCELERATOR" in
     auto)
-        if offline_gpu_available; then
+        if GPU_PROFILE_OUTPUT="$(offline_gpu_profile)"; then
+            IFS='|' read -r \
+                INSTALL_GPU_PROFILE \
+                INSTALL_LLAMA_GPU_LAYERS \
+                INSTALL_LLAMA_GPU_LAYERS_DRAFT \
+                INSTALL_GPU_MEMORY_MIB \
+                <<<"$GPU_PROFILE_OUTPUT"
+
             INSTALL_ACCELERATOR="gpu"
 
             log \
-                "NVIDIA GPU detected; selecting GPU runtime"
+                "NVIDIA GPU selected profile=$INSTALL_GPU_PROFILE memory=${INSTALL_GPU_MEMORY_MIB}MiB layers=${INSTALL_LLAMA_GPU_LAYERS}/${INSTALL_LLAMA_GPU_LAYERS_DRAFT}"
         else
             INSTALL_ACCELERATOR="cpu"
 
             log \
-                "NVIDIA GPU unavailable; selecting CPU runtime"
+                "Supported NVIDIA GPU unavailable; selecting CPU runtime"
         fi
         ;;
 
@@ -295,12 +308,19 @@ case "$INSTALL_ACCELERATOR" in
         ;;
 
     gpu)
-        offline_gpu_available ||
+        GPU_PROFILE_OUTPUT="$(offline_gpu_profile)" ||
             die \
-                "GPU mode requested but NVIDIA GPU is unavailable to Docker"
+                "GPU mode requires CUDA, nvidia-smi, and at least 6144 MiB VRAM"
+
+        IFS='|' read -r \
+            INSTALL_GPU_PROFILE \
+            INSTALL_LLAMA_GPU_LAYERS \
+            INSTALL_LLAMA_GPU_LAYERS_DRAFT \
+            INSTALL_GPU_MEMORY_MIB \
+            <<<"$GPU_PROFILE_OUTPUT"
 
         log \
-            "GPU runtime explicitly selected"
+            "GPU runtime explicitly selected profile=$INSTALL_GPU_PROFILE memory=${INSTALL_GPU_MEMORY_MIB}MiB layers=${INSTALL_LLAMA_GPU_LAYERS}/${INSTALL_LLAMA_GPU_LAYERS_DRAFT}"
         ;;
 
     *)
@@ -334,6 +354,10 @@ python3 - \
     "$INSTALL_RUNTIME_DIR" \
     "$INSTALL_FIGURE_DIR" \
     "$INSTALL_ACCELERATOR" \
+    "$INSTALL_GPU_PROFILE" \
+    "$INSTALL_GPU_MEMORY_MIB" \
+    "$INSTALL_LLAMA_GPU_LAYERS" \
+    "$INSTALL_LLAMA_GPU_LAYERS_DRAFT" \
     "$HOST_IP" \
     "$LAN_CIDR" \
     "$NETWORK_INTERFACE" <<'PY'
@@ -350,9 +374,13 @@ values = {
     "CHATBOT_RUNTIME_DIR": sys.argv[6],
     "FIGURE_DIR": sys.argv[7],
     "CHATBOT_ACCELERATOR": sys.argv[8],
-    "CHATBOT_HOST_IP": sys.argv[9],
-    "CHATBOT_LAN_CIDR": sys.argv[10],
-    "CHATBOT_NETWORK_INTERFACE": sys.argv[11],
+    "CHATBOT_GPU_PROFILE": sys.argv[9],
+    "CHATBOT_GPU_MEMORY_MIB": sys.argv[10],
+    "LLAMA_GPU_LAYERS": sys.argv[11],
+    "LLAMA_GPU_LAYERS_DRAFT": sys.argv[12],
+    "CHATBOT_HOST_IP": sys.argv[13],
+    "CHATBOT_LAN_CIDR": sys.argv[14],
+    "CHATBOT_NETWORK_INTERFACE": sys.argv[15],
 }
 
 lines = path.read_text(

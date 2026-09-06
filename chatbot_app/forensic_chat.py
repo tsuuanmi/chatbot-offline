@@ -25,6 +25,9 @@ from haystack.utils import Secret
 from chatbot_app.auth import (
     current_identity,
 )
+from chatbot_app.capacity import (
+    GenerationAdmissionController,
+)
 from chatbot_app.citations import (
     CitationStreamFilter,
     citation_ids,
@@ -182,6 +185,20 @@ class ForensicChatService:
             default=8000,
             minimum=256,
             maximum=24000,
+        )
+
+        self.generation_queue_timeout_seconds = bounded_env_int(
+            "CHAT_GENERATION_QUEUE_TIMEOUT_SECONDS",
+            default=5,
+            minimum=1,
+            maximum=60,
+        )
+
+        self.generation_capacity = GenerationAdmissionController(
+            limit=1,
+            queue_timeout_seconds=(
+                self.generation_queue_timeout_seconds
+            ),
         )
 
         self.history_context = HistoryContextBuilder(
@@ -870,73 +887,12 @@ class ForensicChatService:
             for item in evidence
         }
 
-        if streaming_callback is None:
-            result = await self.generation.run_async(
-                {
-                    "llm": {
-                        "messages": messages,
-                    }
-                }
-            )
-
-            answer = result[
-                "llm"
-            ]["replies"][0].text
-
-            answer = sanitize_citations(
-                answer,
+        async with self.generation_capacity.slot():
+            answer = await self._invoke_model(
+                messages,
                 allowed,
+                streaming_callback,
             )
-
-        else:
-            citation_filter = CitationStreamFilter(
-                allowed
-            )
-
-            parts: list[str] = []
-
-            stream = async_streaming_generator(
-                pipeline=self.generation,
-                pipeline_run_args={
-                    "llm": {
-                        "messages": messages,
-                    }
-                },
-                streaming_components=[
-                    "llm"
-                ],
-            )
-
-            async for chunk in stream:
-                content = getattr(
-                    chunk,
-                    "content",
-                    "",
-                )
-
-                if not content:
-                    continue
-
-                safe = citation_filter.feed(
-                    content
-                )
-
-                if safe:
-                    parts.append(safe)
-                    await streaming_callback(
-                        safe
-                    )
-
-            tail = citation_filter.finish()
-
-            if tail:
-                parts.append(tail)
-                await streaming_callback(
-                    tail
-                )
-
-            answer = "".join(parts)
-
         used = citation_ids(answer)
 
         citations = [
@@ -960,6 +916,83 @@ class ForensicChatService:
             ),
             "citations": citations,
         }
+
+    async def _invoke_model(
+        self,
+        messages: list[ChatMessage],
+        allowed: set[str],
+        streaming_callback: (
+            Callable[[str], Awaitable[None]]
+            | None
+        ),
+    ) -> str:
+        if streaming_callback is None:
+            result = await self.generation.run_async(
+                {
+                    "llm": {
+                        "messages": messages,
+                    }
+                }
+            )
+
+            answer = result[
+                "llm"
+            ]["replies"][0].text
+
+            return sanitize_citations(
+                answer,
+                allowed,
+            )
+
+        citation_filter = CitationStreamFilter(
+            allowed
+        )
+
+        parts: list[str] = []
+
+        stream = async_streaming_generator(
+            pipeline=self.generation,
+            pipeline_run_args={
+                "llm": {
+                    "messages": messages,
+                }
+            },
+            streaming_components=[
+                "llm"
+            ],
+        )
+
+        async for chunk in stream:
+            content = getattr(
+                chunk,
+                "content",
+                "",
+            )
+
+            if not content:
+                continue
+
+            safe = citation_filter.feed(
+                content
+            )
+
+            if safe:
+                parts.append(safe)
+
+                await streaming_callback(
+                    safe
+                )
+
+        tail = citation_filter.finish()
+
+        if tail:
+            parts.append(tail)
+
+            await streaming_callback(
+                tail
+            )
+
+        return "".join(parts)
 
     @staticmethod
     def _evidence_context(

@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 from chatbot_app.auth import current_identity
+from chatbot_app.capacity import GenerationBusyError
 from chatbot_app.forensic_chat import get_forensic_chat
 from chatbot_app.history import (
     ConversationOwnershipError,
@@ -88,6 +89,27 @@ async def chat(
             image=payload.image,
         )
 
+    except GenerationBusyError as error:
+        return JSONResponse(
+            status_code=429,
+            headers={
+                "Retry-After": str(
+                    error.retry_after_seconds
+                ),
+            },
+            content={
+                "error": {
+                    "code": "busy",
+                    "message": (
+                        "Model generation capacity is busy"
+                    ),
+                    "retry_after_seconds": (
+                        error.retry_after_seconds
+                    ),
+                }
+            },
+        )
+
     except ValueError as error:
         return _error(
             422,
@@ -136,6 +158,27 @@ async def stream_chat(
         except asyncio.CancelledError:
             raise
 
+        except GenerationBusyError as error:
+            yield (
+                "data: "
+                + json.dumps(
+                    {
+                        "type": "error",
+                        "error": {
+                            "code": "busy",
+                            "message": (
+                                "Model generation capacity is busy"
+                            ),
+                            "retry_after_seconds": (
+                                error.retry_after_seconds
+                            ),
+                        },
+                    },
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                )
+                + "\n\n"
+            )
         except ValueError as error:
             yield (
                 "data: "
