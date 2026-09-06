@@ -32,6 +32,10 @@ from .history import (
     stream_history_suite,
 )
 
+from .recovery import (
+    recovery_suite,
+)
+
 from .security import (
     secret_audit,
     secret_group_check,
@@ -61,6 +65,13 @@ def verify() -> None:
     print()
     print("VERIFY PASS")
 
+
+
+def recovery() -> None:
+    config_check()
+    auth_check()
+
+    recovery_suite()
 
 def full(
     *,

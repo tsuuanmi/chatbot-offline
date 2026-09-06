@@ -55,6 +55,7 @@ TOOLS = $(COMPOSE) --profile tools
 	test \
 	verify \
 	accept \
+	recovery \
 	bundle \
 	bundle-gpu \
 	clean
@@ -87,6 +88,7 @@ help:
 		'  make test              Run unit tests' \
 		'  make verify            Common runtime acceptance' \
 		'  make accept            Full release acceptance' \
+		'  make recovery          Persistent-state recovery test' \
 		'' \
 		'Release:' \
 		'  make bundle [BUNDLE_VERSION=x]' \
@@ -283,6 +285,12 @@ accept: check-env
 		CHAT_CLIENT_API_KEY_FILE="$(CLIENT_API_KEY)" \
 		CHAT_GATEWAY_BASE_URL="$(GATEWAY_URL)" \
 		python3 -m tools.accept full
+
+
+
+recovery: check-env auth-check
+	@CHAT_CLIENT_API_KEY_FILE="$(CLIENT_API_KEY)" \
+		python3 -m tools.accept recovery
 
 
 bundle: check-env

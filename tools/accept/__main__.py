@@ -6,6 +6,7 @@ import argparse
 
 from .suite import (
     full,
+    recovery,
     verify,
 )
 
@@ -25,6 +26,14 @@ def main() -> None:
         help="Run normal runtime acceptance",
     )
 
+    commands.add_parser(
+        "recovery",
+        help=(
+            "Verify persistent state "
+            "across service restarts"
+        ),
+    )
+
     full_parser = commands.add_parser(
         "full",
         help="Run full release acceptance",
@@ -40,6 +49,10 @@ def main() -> None:
 
     if args.command == "verify":
         verify()
+        return
+
+    if args.command == "recovery":
+        recovery()
         return
 
     if args.command == "full":
