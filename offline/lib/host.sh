@@ -554,25 +554,13 @@ offline_host_accept() {
     expected_port="${expected_port:-18080}"
 
     actual_cidr="$(
-        awk -F= '
-            $1 == "CHATBOT_LAN_CIDR" {
-                print substr(
-                    $0,
-                    index($0, "=") + 1
-                )
-            }
-        ' /etc/chatbot/firewall.conf
+        awk -F= '$1 == "CHATBOT_LAN_CIDR" { print substr($0, index($0, "=") + 1) }' \
+            /etc/chatbot/firewall.conf
     )"
 
     actual_port="$(
-        awk -F= '
-            $1 == "CHATBOT_GATEWAY_PORT" {
-                print substr(
-                    $0,
-                    index($0, "=") + 1
-                )
-            }
-        ' /etc/chatbot/firewall.conf
+        awk -F= '$1 == "CHATBOT_GATEWAY_PORT" { print substr($0, index($0, "=") + 1) }' \
+            /etc/chatbot/firewall.conf
     )"
 
     [[ -n "$expected_cidr" ]] ||
