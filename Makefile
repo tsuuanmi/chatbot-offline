@@ -131,15 +131,7 @@ build: check-env
 		--build-arg EMBEDDING_DIMENSION="$$EMBEDDING_DIMENSION" \
 		-t "$(APP_TAG)" \
 		.; \
-	image_id="$$( \
-		docker image inspect \
-			"$(APP_TAG)" \
-			--format '{{.Id}}' \
-	)"; \
-	sed -i '/^CHATBOT_IMAGE=/d' "$(VERSIONS_ENV)"; \
-	printf 'CHATBOT_IMAGE=%s\n' "$$image_id" \
-		>> "$(VERSIONS_ENV)"; \
-	echo "CHATBOT_IMAGE=$$image_id"
+	echo "CHATBOT_IMAGE=$(APP_TAG)"
 
 
 up: check-env auth-check
