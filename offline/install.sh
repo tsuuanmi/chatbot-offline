@@ -102,7 +102,15 @@ BUNDLE_TYPE="$(
         "Only universal runtime releases are supported"
 
 log "Verifying runtime release"
-sha256sum -c SHA256SUMS >/dev/null
+
+if ! sha256sum \
+    --check \
+    --quiet \
+    SHA256SUMS
+then
+    die \
+        "Runtime release checksum verification failed. Rebuild the runtime release after changing source files."
+fi
 
 BUNDLE_ARCH="$(
     offline_manifest_value \
@@ -272,7 +280,8 @@ chown -R \
     "$FIGURE_STORE" \
     "$STATE_DIR"
 
-INSTALL_ACCELERATOR="${CHATBOT_ACCELERATOR:-auto}"
+INSTALL_ACCELERATOR="${CHATBOT_ACCELERATOR:-cpu}"
+REQUESTED_ACCELERATOR="$INSTALL_ACCELERATOR"
 
 INSTALL_GPU_PROFILE="none"
 INSTALL_GPU_MEMORY_MIB="0"
@@ -331,10 +340,39 @@ esac
 
 
 if [[ "$INSTALL_ACCELERATOR" == "gpu" ]]; then
-    log "Checking host GPU memory headroom"
+    log \
+        "Cleaning existing chatbot runtime before GPU preflight"
 
-    offline_gpu_preflight_host_memory ||
-        die             "Insufficient free GPU memory; stop substantial GPU processes and retry"
+    offline_gpu_clean_existing_chatbot_containers ||
+        die \
+            "Unable to clean existing chatbot containers"
+
+    log \
+        "Waiting for previous GPU allocations to be released"
+
+    GPU_PREFLIGHT_OK="1"
+
+    if ! offline_gpu_wait_for_memory_release; then
+        GPU_PREFLIGHT_OK="0"
+    elif ! offline_gpu_preflight_host_memory; then
+        GPU_PREFLIGHT_OK="0"
+    fi
+
+    if [[ "$GPU_PREFLIGHT_OK" != "1" ]]; then
+        if [[ "$REQUESTED_ACCELERATOR" == "auto" ]]; then
+            INSTALL_ACCELERATOR="cpu"
+            INSTALL_GPU_PROFILE="none"
+            INSTALL_GPU_MEMORY_MIB="0"
+            INSTALL_LLAMA_GPU_LAYERS="0"
+            INSTALL_LLAMA_GPU_LAYERS_DRAFT="0"
+
+            log \
+                "GPU memory headroom insufficient; falling back to CPU runtime"
+        else
+            die \
+                "Insufficient free GPU memory after cleaning the previous chatbot runtime"
+        fi
+    fi
 fi
 
 SECRET_GID="$DEPLOY_GID"

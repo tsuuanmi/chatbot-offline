@@ -24,6 +24,8 @@ offline_gpu_profile_for_memory() {
     fi
 }
 
+
+
 offline_gpu_residual_limit_mib() {
     local total_mib="$1"
 
@@ -68,26 +70,18 @@ offline_gpu_memory_mib() {
         nvidia-smi \
             --query-gpu=memory.total \
             --format=csv,noheader,nounits \
-            2>/dev/null \
-        | awk '
-            NR == 1 {
-                gsub(/[[:space:]]/, "", $0)
+            2>/dev/null |
+        head -n 1 |
+        tr -d '[:space:]'
+    )" || return 1
 
-                if ($0 ~ /^[0-9]+$/) {
-                    print $0
-                }
-
-                exit
-            }
-        '
-    )"
-
-    [[ -n "$memory_mib" ]] ||
+    [[ "$memory_mib" =~ ^[0-9]+$ ]] ||
         return 1
 
     printf '%s\n' \
         "$memory_mib"
 }
+
 
 
 offline_gpu_residual_limit_for_memory() {
@@ -126,23 +120,36 @@ offline_gpu_residual_within_limit() {
     (( used_mib < limit_mib ))
 }
 
+
 offline_gpu_existing_chatbot_memory_mib() {
-    local container_pid
+    local container_pids
+    local processes
+    local pid
+    local used_mib
+    local target_pid
+    local total_mib=0
 
-    container_pid="$(
-        docker inspect \
-            --format '{{.State.Pid}}' \
+    container_pids="$(
+        docker top \
             chatbot-llama \
-            2>/dev/null \
-        || true
-    )"
+            -eo pid \
+            2>/dev/null |
+        while IFS= read -r pid; do
+            pid="$(
+                printf '%s' "$pid" |
+                tr -d '[:space:]'
+            )"
 
-    if ! [[ "$container_pid" =~ ^[1-9][0-9]*$ ]]; then
+            if [[ "$pid" =~ ^[0-9]+$ ]]; then
+                printf '%s\n' "$pid"
+            fi
+        done
+    )" || true
+
+    if [[ -z "$container_pids" ]]; then
         printf '0\n'
         return 0
     fi
-
-    local processes
 
     processes="$(
         nvidia-smi \
@@ -151,27 +158,39 @@ offline_gpu_existing_chatbot_memory_mib() {
             2>/dev/null
     )" || return 1
 
-    awk \
-        -F, \
-        -v target="$container_pid" '
-            {
-                gsub(/[[:space:]]/, "", $1)
-                gsub(/[[:space:]]/, "", $2)
+    while IFS=',' read -r pid used_mib; do
+        pid="$(
+            printf '%s' "$pid" |
+            tr -d '[:space:]'
+        )"
 
-                if (
-                    $1 == target &&
-                    $2 ~ /^[0-9]+$/
-                ) {
-                    total += $2
-                }
-            }
+        used_mib="$(
+            printf '%s' "$used_mib" |
+            tr -d '[:space:]'
+        )"
 
-            END {
-                print total + 0
-            }
-        ' \
-        <<<"$processes"
+        [[ "$pid" =~ ^[0-9]+$ ]] ||
+            continue
+
+        [[ "$used_mib" =~ ^[0-9]+$ ]] ||
+            continue
+
+        while IFS= read -r target_pid; do
+            if [[ "$pid" == "$target_pid" ]]; then
+                total_mib=$((
+                    total_mib + used_mib
+                ))
+                break
+            fi
+        done <<<"$container_pids"
+
+    done <<<"$processes"
+
+    printf '%s\n' \
+        "$total_mib"
 }
+
+
 
 offline_gpu_residual_preflight() {
     local expected_total_mib="${1:-}"
@@ -609,35 +628,56 @@ offline_gpu_memory_usage_mib() {
         return 1
 
     local measurement
+    local total_mib
+    local used_mib
+    local extra
 
     measurement="$(
         nvidia-smi \
             --query-gpu=memory.total,memory.used \
             --format=csv,noheader,nounits \
             2>/dev/null |
-        awk -F, '
-            NR == 1 {
-                gsub(/[[:space:]]/, "", $1)
-                gsub(/[[:space:]]/, "", $2)
-
-                if (
-                    $1 ~ /^[0-9]+$/ &&
-                    $2 ~ /^[0-9]+$/
-                ) {
-                    print $1 "|" $2
-                }
-
-                exit
-            }
-        '
-    )"
+        head -n 1
+    )" || return 1
 
     [[ -n "$measurement" ]] ||
         return 1
 
-    printf '%s\n' \
-        "$measurement"
+    IFS=',' read -r \
+        total_mib \
+        used_mib \
+        extra \
+        <<<"$measurement"
+
+    total_mib="$(
+        printf '%s' "$total_mib" |
+        tr -d '[:space:]'
+    )"
+
+    used_mib="$(
+        printf '%s' "$used_mib" |
+        tr -d '[:space:]'
+    )"
+
+    extra="$(
+        printf '%s' "${extra:-}" |
+        tr -d '[:space:]'
+    )"
+
+    [[ -z "$extra" ]] ||
+        return 1
+
+    [[ "$total_mib" =~ ^[0-9]+$ ]] ||
+        return 1
+
+    [[ "$used_mib" =~ ^[0-9]+$ ]] ||
+        return 1
+
+    printf '%s|%s\n' \
+        "$total_mib" \
+        "$used_mib"
 }
+
 
 offline_gpu_existing_runtime_uses_gpu() {
     docker inspect \
@@ -671,43 +711,153 @@ offline_gpu_existing_runtime_uses_gpu() {
         [[ "$requests" != "[]" ]]
 }
 
-offline_gpu_preflight_host_memory() {
-    if offline_gpu_existing_runtime_uses_gpu; then
-        echo \
-            "Existing chatbot GPU runtime detected; skipping residual VRAM preflight during in-place upgrade"
-        return 0
-    fi
 
+
+offline_gpu_clean_existing_chatbot_containers() {
+    local name
+
+    echo \
+        "Cleaning existing chatbot containers..."
+
+    for name in \
+        chatbot-llama \
+        chatbot-proxy \
+        chatbot-app \
+        chatbot-postgres
+    do
+        if docker inspect \
+            "$name" \
+            >/dev/null 2>&1
+        then
+            echo \
+                "Removing existing container: $name"
+
+            docker rm \
+                -f \
+                "$name" \
+                >/dev/null ||
+                return 1
+        fi
+    done
+
+    echo \
+        "Existing chatbot containers cleaned"
+
+    return 0
+}
+
+offline_gpu_wait_for_memory_release() {
+    local attempt
     local measurement
     local total_mib
     local used_mib
     local limit_mib
 
+    for attempt in {1..20}; do
+        measurement="$(
+            offline_gpu_memory_usage_mib
+        )" || return 1
+
+        IFS='|' read -r \
+            total_mib \
+            used_mib \
+            <<<"$measurement"
+
+        limit_mib="$(
+            offline_gpu_residual_limit_mib \
+                "$total_mib"
+        )" || return 1
+
+        if offline_gpu_residual_memory_allowed \
+            "$total_mib" \
+            "$used_mib"
+        then
+            echo \
+                "GPU memory ready after cleanup: used=${used_mib}MiB limit=${limit_mib}MiB"
+
+            return 0
+        fi
+
+        echo \
+            "Waiting for GPU memory release: used=${used_mib}MiB limit=${limit_mib}MiB"
+
+        sleep 1
+    done
+
+    echo \
+        "GPU memory did not fall below the preflight limit after cleanup" \
+        >&2
+
+    return 1
+}
+
+offline_gpu_preflight_host_memory() {
+    local measurement
+    local total_mib
+    local used_mib
+    local chatbot_used_mib="0"
+    local external_used_mib
+    local limit_mib
+
     measurement="$(
         offline_gpu_memory_usage_mib
-    )" ||
+    )" || {
+        echo \
+            "Unable to measure NVIDIA GPU memory" \
+            >&2
         return 1
+    }
 
     IFS='|' read -r \
         total_mib \
         used_mib \
         <<<"$measurement"
 
+    if offline_gpu_existing_runtime_uses_gpu; then
+        chatbot_used_mib="$(
+            offline_gpu_existing_chatbot_memory_mib
+        )" || {
+            echo \
+                "Unable to measure existing chatbot GPU memory" \
+                >&2
+            return 1
+        }
+
+        if ! [[ "$chatbot_used_mib" =~ ^[0-9]+$ ]]; then
+            echo \
+                "Invalid chatbot GPU memory measurement: $chatbot_used_mib" \
+                >&2
+            return 1
+        fi
+
+        if (( chatbot_used_mib > used_mib )); then
+            chatbot_used_mib="$used_mib"
+        fi
+    fi
+
+    external_used_mib=$((
+        used_mib - chatbot_used_mib
+    ))
+
     limit_mib="$(
         offline_gpu_residual_limit_mib \
             "$total_mib"
-    )" ||
-        return 1
+    )" || return 1
 
     echo \
-        "GPU residual memory: ${used_mib} MiB of ${total_mib} MiB (limit ${limit_mib} MiB)"
+        "GPU memory total=${total_mib}MiB used=${used_mib}MiB chatbot=${chatbot_used_mib}MiB external=${external_used_mib}MiB limit=${limit_mib}MiB"
 
     if ! offline_gpu_residual_memory_allowed \
         "$total_mib" \
-        "$used_mib"
+        "$external_used_mib"
     then
         echo \
-            "GPU does not have enough free memory for the selected Chatbot profile" >&2
+            "GPU does not have enough free memory for the selected Chatbot profile" \
+            >&2
+
+        echo \
+            "GPU compute processes:" \
+            >&2
 
         nvidia-smi \
             --query-compute-apps=pid,process_name,used_memory \

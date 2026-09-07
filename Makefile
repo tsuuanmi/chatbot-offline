@@ -52,6 +52,7 @@ TOOLS = $(COMPOSE) --profile tools
 	migrate \
 	reindex \
 	reindex-figures \
+	gpu-check \
 	gpu \
 	cpu \
 	auth-init \
@@ -198,7 +199,15 @@ reindex-figures: check-env
 		index-figures
 	@echo "FIGURE REINDEX PASS"
 
-gpu: check-env auth-check
+gpu-check:
+	@OFFLINE_ROOT="$(CURDIR)" \
+		bash -eu -o pipefail -c '\
+			source "$$OFFLINE_ROOT/offline/lib/common.sh"; source "$$OFFLINE_ROOT/offline/lib/gpu.sh"; \
+			offline_gpu_preflight_host_memory; \
+			echo "GPU VRAM PREFLIGHT PASS" \
+		'
+
+gpu: check-env auth-check gpu-check
 	@LLAMA_GPU_LAYERS="$(LLAMA_GPU_LAYERS)" \
 		LLAMA_GPU_LAYERS_DRAFT="$(LLAMA_GPU_LAYERS_DRAFT)" \
 		$(GPU_COMPOSE) up \

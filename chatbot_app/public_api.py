@@ -29,7 +29,7 @@ router = APIRouter()
 class ChatRequest(BaseModel):
     """Canonical public chat request."""
 
-    message: str
+    query: str
     conversation_id: UUID | None = None
     figure_id: str | None = None
     image: str | None = None
@@ -79,7 +79,7 @@ async def chat(
 
     try:
         return await service.answer(
-            payload.message,
+            payload.query,
             (
                 str(payload.conversation_id)
                 if payload.conversation_id is not None
@@ -136,7 +136,7 @@ async def stream_chat(
     async def events():
         try:
             async for event in service.stream_answer(
-                payload.message,
+                payload.query,
                 (
                     str(payload.conversation_id)
                     if payload.conversation_id is not None

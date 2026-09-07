@@ -51,14 +51,32 @@ def request(
             extra_headers
         )
 
+    wire_body = body
+
+    # Stable public API uses "query".
+    # Internal Hayhooks endpoints keep "message".
+    if (
+        body is not None
+        and path in {
+            "/api/v1/chat",
+            "/api/v1/chat/stream",
+        }
+        and "message" in body
+        and "query" not in body
+    ):
+        wire_body = dict(body)
+        wire_body["query"] = wire_body.pop(
+            "message"
+        )
+
     data = (
         json.dumps(
-            body,
+            wire_body,
             ensure_ascii=False,
         ).encode(
             "utf-8"
         )
-        if body is not None
+        if wire_body is not None
         else None
     )
 
@@ -212,8 +230,16 @@ def stream_events(
     image: str | None = None,
     base_url: str = INTERNAL_URL,
 ) -> list[dict[str, object]]:
+    public_api = _uses_public_api(
+        base_url
+    )
+
     payload: dict[str, object] = {
-        "message": message,
+        (
+            "query"
+            if public_api
+            else "message"
+        ): message,
     }
 
     if conversation_id is not None:
@@ -233,7 +259,7 @@ def stream_events(
 
     stream_path = (
         "/api/v1/chat/stream"
-        if _uses_public_api(base_url)
+        if public_api
         else "/chat/stream"
     )
 

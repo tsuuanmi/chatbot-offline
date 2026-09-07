@@ -62,14 +62,16 @@ Request:
 
 ```json
 {
-  "message": "STR là gì?",
+  "query": "STR là gì?",
   "conversation_id": "550e8400-e29b-41d4-a716-446655440000",
   "figure_id": null,
   "image": null
 }
 ```
 
-`message` is required.
+`query` is required.
+
+The public `/api/v1/chat` and `/api/v1/chat/stream` contract uses `query`, not `message`.
 
 `conversation_id` is optional and must be a UUID. Omit it for a stateless request. For one-sitting conversational context, generate one UUID on the client and reuse it for consecutive turns.
 
@@ -127,9 +129,11 @@ API_KEY="$(cat "$HOME/.local/share/chatbot/state/secrets/chat_api_key")"
 curl -sS \
   -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"message":"STR là gì?"}' \
+  -d '{"query":"STR là gì?"}' \
   http://127.0.0.1:18080/api/v1/chat
 ```
+
+The production gateway is intentionally not OpenAI-compatible. `/v1/models` and `/v1/chat/completions` are not public endpoints.
 
 ## Error Behavior
 

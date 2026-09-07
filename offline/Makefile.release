@@ -12,11 +12,13 @@ SHELL := /bin/bash
 	reindex-figures \
 	verify \
 	accept \
+	clean-old-chatbot \
+	gpu-check \
 	gpu \
 	cpu
 
 install:
-	@CHATBOT_ACCELERATOR="$(or $(ACCELERATOR),auto)" \
+	@CHATBOT_ACCELERATOR="$(or $(ACCELERATOR),cpu)" \
 		CHATBOT_HOST_IP="$(HOST_IP)" \
 		CHATBOT_MODEL_PACKAGE="$(MODEL_PACKAGE)" \
 		CHATBOT_MODEL_STORE="$(MODEL_STORE)" \
@@ -51,7 +53,32 @@ verify:
 accept:
 	@./offline/manage.sh accept
 
-gpu:
+clean-old-chatbot:
+	@set -eu; \
+	echo "Cleaning existing chatbot containers..."; \
+	for name in \
+		chatbot-proxy \
+		chatbot-app \
+		chatbot-llama \
+		chatbot-postgres; \
+	do \
+		if docker inspect "$$name" >/dev/null 2>&1; then \
+			echo "Removing $$name"; \
+			docker rm -f "$$name" >/dev/null; \
+		fi; \
+	done; \
+	echo "OLD CHATBOT CONTAINERS CLEAN PASS"
+
+gpu-check:
+	@OFFLINE_ROOT="$(CURDIR)" \
+		bash -eu -o pipefail -c '\
+			source "$$OFFLINE_ROOT/offline/lib/common.sh"; source "$$OFFLINE_ROOT/offline/lib/gpu.sh"; \
+			offline_gpu_preflight_host_memory; \
+			echo "GPU VRAM PREFLIGHT PASS" \
+		'
+
+
+gpu: gpu-check
 	@./offline/manage.sh gpu enable
 
 cpu:
