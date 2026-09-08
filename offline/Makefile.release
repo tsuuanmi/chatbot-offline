@@ -1,24 +1,40 @@
 SHELL := /bin/bash
 .SHELLFLAGS := -eu -o pipefail -c
 
+.DEFAULT_GOAL := help
+
+ACCELERATOR ?= auto
+
+
 .PHONY: \
+	help \
 	install \
 	start \
 	stop \
-	restart \
 	status \
 	logs \
-	reindex \
-	reindex-figures \
-	verify \
-	accept \
-	clean-old-chatbot \
-	gpu-check \
-	gpu \
-	cpu
+	index \
+	verify
+
+
+help:
+	@printf '%s\n' \
+		'chatbot offline commands' \
+		'' \
+		'  sudo make install      Install or update chatbot' \
+		'  make start             Start chatbot' \
+		'  make stop              Stop chatbot' \
+		'  make status            Show runtime status' \
+		'  make logs [SERVICE=x]  Follow service logs' \
+		'  make index             Rebuild knowledge and figure indexes' \
+		'  make verify            Run full deployment verification' \
+		'' \
+		'Install options:' \
+		'  ACCELERATOR=auto|cpu|gpu   Default: auto'
+
 
 install:
-	@CHATBOT_ACCELERATOR="$(or $(ACCELERATOR),cpu)" \
+	@CHATBOT_ACCELERATOR="$(ACCELERATOR)" \
 		CHATBOT_HOST_IP="$(HOST_IP)" \
 		CHATBOT_MODEL_PACKAGE="$(MODEL_PACKAGE)" \
 		CHATBOT_MODEL_STORE="$(MODEL_STORE)" \
@@ -26,60 +42,29 @@ install:
 		CHATBOT_STATE_DIR="$(STATE_DIR)" \
 		./offline/install.sh
 
+
 start:
 	@./offline/manage.sh start
+
 
 stop:
 	@./offline/manage.sh stop
 
-restart:
-	@./offline/manage.sh restart
 
 status:
 	@./offline/manage.sh status
 
+
 logs:
-	@./offline/manage.sh logs $(SERVICE)
+	@./offline/manage.sh logs \
+		$(if $(SERVICE),$(SERVICE),chatbot)
 
-reindex:
+
+index:
 	@./offline/manage.sh reindex
-
-reindex-figures:
 	@./offline/manage.sh reindex-figures
+	@echo "OFFLINE INDEX PASS"
+
 
 verify:
-	@./offline/manage.sh verify
-
-accept:
 	@./offline/manage.sh accept
-
-clean-old-chatbot:
-	@set -eu; \
-	echo "Cleaning existing chatbot containers..."; \
-	for name in \
-		chatbot-proxy \
-		chatbot-app \
-		chatbot-llama \
-		chatbot-postgres; \
-	do \
-		if docker inspect "$$name" >/dev/null 2>&1; then \
-			echo "Removing $$name"; \
-			docker rm -f "$$name" >/dev/null; \
-		fi; \
-	done; \
-	echo "OLD CHATBOT CONTAINERS CLEAN PASS"
-
-gpu-check:
-	@OFFLINE_ROOT="$(CURDIR)" \
-		bash -eu -o pipefail -c '\
-			source "$$OFFLINE_ROOT/offline/lib/common.sh"; source "$$OFFLINE_ROOT/offline/lib/gpu.sh"; \
-			offline_gpu_preflight_host_memory; \
-			echo "GPU VRAM PREFLIGHT PASS" \
-		'
-
-
-gpu: gpu-check
-	@./offline/manage.sh gpu enable
-
-cpu:
-	@./offline/manage.sh gpu disable
